@@ -104,6 +104,14 @@ public class DropRecorderTest
 	}
 
 	@Test
+	public void gauntletBossesUseTheActivityName()
+	{
+		assertEquals("The Gauntlet", DropRecorder.npcLootSource("Crystalline Hunllef"));
+		assertEquals("Corrupted Gauntlet", DropRecorder.npcLootSource("Corrupted Hunllef"));
+		assertEquals("Guard dog", DropRecorder.npcLootSource("Guard dog"));
+	}
+
+	@Test
 	public void partySizeIsKept()
 	{
 		Record record = recorder.loot("Chambers of Xeric", null, stacks(BONES, 1), 3, 416, 1_000);

@@ -9,6 +9,15 @@ import org.junit.Test;
 public class ChatParsersTest
 {
 	@Test
+	public void pickpockets()
+	{
+		assertTrue(ChatParsers.isPickpocket("You pick the guard's pocket."));
+		assertTrue(ChatParsers.isPickpocket("You pick Martin the Master Gardener's pocket."));
+		assertFalse(ChatParsers.isPickpocket("You fail to pick the guard's pocket."));
+		assertFalse(ChatParsers.isPickpocket("Your Vorkath kill count is: 1,512."));
+	}
+
+	@Test
 	public void killCounts()
 	{
 		ChatParsers.KillCount kc = ChatParsers.killCount("Your Vorkath kill count is: 1,512.");

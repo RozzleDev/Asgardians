@@ -55,7 +55,6 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
-import net.runelite.client.events.NpcLootReceived;
 import net.runelite.client.events.ServerNpcLoot;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
@@ -100,17 +99,9 @@ public class AsgardiansPlugin extends Plugin
 	private static final String[] RAID_EVENTS = {"Chambers of Xeric", "Theatre of Blood", "Tombs of Amascut"};
 	/** Group bosses whose NPC loot gets the party size. */
 	private static final Set<String> GROUP_NPCS = Set.of("Nex", "The Nightmare");
-	/**
-	 * Bosses whose loot RuneLite only reports through the Loot Tracker's LootReceived (as NPC loot), not NpcLootReceived.
-	 * Same list Dink uses. The Gauntlet bosses are recorded under the name of the activity.
-	 */
-	private static final Map<String, String> LOOT_TRACKER_ONLY_NPCS = Map.of(
-		"The Whisperer", "The Whisperer",
-		"Araxxor", "Araxxor",
-		"Branda the Fire Queen", "Branda the Fire Queen",
-		"Eldric the Ice King", "Eldric the Ice King",
-		"Crystalline Hunllef", "The Gauntlet",
-		"Corrupted Hunllef", "Corrupted Gauntlet");
+
+	/** Game tick of the last pickpocket, whose loot the game also reports as NPC loot. */
+	private int pickpocketTick = -1;
 
 	@Inject
 	private Client client;
@@ -392,43 +383,29 @@ public class AsgardiansPlugin extends Plugin
 		clientThread.invokeLater(this::onAccountState);
 	}
 
-	@Subscribe
-	public void onNpcLootReceived(NpcLootReceived event)
-	{
-		NPC npc = event.getNpc();
-		String name = npc.getName();
-		if (LOOT_TRACKER_ONLY_NPCS.containsKey(name))
-		{
-			// Recorded from LootReceived instead, in case RuneLite ever fires both.
-			return;
-		}
-		recordLoot(name, npc.getId(), event.getItems(), GROUP_NPCS.contains(name));
-	}
-
-	/** Loot the game server reports directly rather than as items on the floor. */
+	/**
+	 * The one source of NPC loot. The game reports each kill's drops itself, which is what RuneLite's Loot Tracker uses.
+	 * NpcLootReceived reports the same kill again from the items on the floor, so it mustn't be recorded as well.
+	 */
 	@Subscribe
 	public void onServerNpcLoot(ServerNpcLoot event)
 	{
+		if (pickpocketTick == client.getTickCount())
+		{
+			// Also arrives through LootReceived as a pickpocket.
+			return;
+		}
 		NPCComposition npc = event.getComposition();
-		recordLoot(npc.getName(), npc.getId(), event.getItems(), GROUP_NPCS.contains(npc.getName()));
+		String name = Text.removeTags(npc.getName());
+		recordLoot(DropRecorder.npcLootSource(name), npc.getId(), event.getItems(), GROUP_NPCS.contains(name));
 	}
 
 	@Subscribe
 	public void onLootReceived(LootReceived event)
 	{
-		if (event.getType() == LootRecordType.NPC)
+		if (event.getType() == LootRecordType.NPC || event.getType() == LootRecordType.PLAYER)
 		{
-			// Most NPC kills arrive through NpcLootReceived; these few only come through the Loot Tracker.
-			String source = LOOT_TRACKER_ONLY_NPCS.get(event.getName());
-			if (source != null)
-			{
-				recordLoot(source, null, event.getItems(), false);
-			}
-			return;
-		}
-		if (event.getType() == LootRecordType.PLAYER)
-		{
-			// Player kills aren't recorded.
+			// NPC kills are recorded from ServerNpcLoot, and player kills aren't recorded.
 			return;
 		}
 		boolean raid = false;
@@ -465,6 +442,11 @@ public class AsgardiansPlugin extends Plugin
 		}
 		if (type == ChatMessageType.GAMEMESSAGE || type == ChatMessageType.SPAM)
 		{
+			if (ChatParsers.isPickpocket(message))
+			{
+				pickpocketTick = client.getTickCount();
+				return;
+			}
 			ChatParsers.KillCount kc = ChatParsers.killCount(message);
 			if (kc != null)
 			{

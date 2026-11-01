@@ -170,6 +170,20 @@ class DropRecorder
 		return record;
 	}
 
+	/** The Gauntlet bosses are recorded under the name of the activity. */
+	static String npcLootSource(String npcName)
+	{
+		switch (npcName)
+		{
+			case "Crystalline Hunllef":
+				return "The Gauntlet";
+			case "Corrupted Hunllef":
+				return "Corrupted Gauntlet";
+			default:
+				return npcName;
+		}
+	}
+
 	/** Kill count messages drop a leading "The" ("Your Gauntlet completion count"), loot sources keep it. */
 	static boolean sameSource(String a, String b)
 	{

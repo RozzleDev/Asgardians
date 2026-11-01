@@ -10,7 +10,9 @@ final class ChatParsers
 	/** "Your Vorkath kill count is: 512." / "Your completed Chambers of Xeric count is: 50." */
 	private static final Pattern KILL_COUNT = Pattern.compile(
 		"^Your (?:completed |subdued )?(.+?) (?:kill |success |completion )?count is: ([\\d,]+)\\.?$");
-	private static final Pattern NEW_CLOG = Pattern.compile("^New item added to your collection log: (.+?)\\.?$");
+	/** "You pick the guard's pocket." The same pattern RuneLite's Loot Tracker uses. */
+	private static final Pattern PICKPOCKET = Pattern.compile("^You pick (?:the )?.+'s? pocket.*");
+	private static final Pattern NEW_CLOG =Pattern.compile("^New item added to your collection log: (.+?)\\.?$");
 	/** "Rsn has a funny feeling like he's being followed: Vorki at 1,234 killcount." */
 	private static final Pattern CLAN_PET = Pattern.compile(
 		"^(.+?) (?:has a funny feeling like .+? (?:being followed|have been followed)|feels something weird sneaking into .+? backpack|feels like .+? acquired something special): (.+?)(?: at .*)?\\.?$");
@@ -37,6 +39,11 @@ final class ChatParsers
 
 	private ChatParsers()
 	{
+	}
+
+	static boolean isPickpocket(String message)
+	{
+		return PICKPOCKET.matcher(message).matches();
 	}
 
 	static KillCount killCount(String message)
