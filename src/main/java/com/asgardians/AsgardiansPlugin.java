@@ -156,6 +156,7 @@ public class AsgardiansPlugin extends Plugin
 	private volatile long lastClanFetch;
 	/** The member's clan profile for the Connection card. */
 	private volatile ClanData.Me me;
+	private volatile List<ClanData.Leaderboard> leaderboards = List.of();
 	/** Set until the first load after logging in, which lists any unread announcements in chat. */
 	private volatile boolean loginNewsPending = true;
 	private final AtomicBoolean fetchingClan = new AtomicBoolean();
@@ -529,6 +530,14 @@ public class AsgardiansPlugin extends Plugin
 				refreshPanel();
 			}
 		});
+		api.get(ApiClient.endpoint(address, "leaderboards"), key, ClanData.LeaderboardList.class, list ->
+		{
+			if (list.ok() && account != null && account.getHash() == who.getHash())
+			{
+				leaderboards = ClanView.orEmpty(list.getBody().getBoards());
+				clientThread.invokeLater(this::refreshClanPanel);
+			}
+		});
 		ClanView previous = clanView;
 		clanFetcher.fetch(address, key, withBoards, previous, result ->
 		{
@@ -681,7 +690,8 @@ public class AsgardiansPlugin extends Plugin
 		}
 		ClanTabs.Input input = new ClanTabs.Input(clanView, online, read != null ? parseLong(read) : 0, notConnected,
 			java.time.ZoneId.systemDefault(), java.time.Instant.now(), apiAddress(),
-			new java.util.HashMap<>(signupLists), new java.util.HashSet<>(signupsOpen), new java.util.HashSet<>(signupsBusy));
+			new java.util.HashMap<>(signupLists), new java.util.HashSet<>(signupsOpen), new java.util.HashSet<>(signupsBusy),
+			leaderboards);
 		AsgardiansPanel target = panel;
 		if (target != null)
 		{
@@ -1487,6 +1497,7 @@ public class AsgardiansPlugin extends Plugin
 				// Records belong to the account that earned them; a switch drops anything still unsent.
 				queue.clear();
 				me = null;
+				leaderboards = List.of();
 				pendingClog = null;
 				clogCapture.reset();
 			}

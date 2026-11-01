@@ -26,10 +26,10 @@ import lombok.Value;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.QuantityFormatter;
 
-/** Builds the Events and News tabs from a {@link ClanView}. Swing thread only. */
+/** Builds the Events, Leaders and News tabs from a {@link ClanView}. Swing thread only. */
 final class ClanTabs
 {
-	/** What the two tabs need besides the view itself. */
+	/** What the tabs need besides the view itself. */
 	@Value
 	static class Input
 	{
@@ -49,6 +49,7 @@ final class ClanTabs
 		java.util.Set<String> expanded;
 		/** Events with a sign-up or withdraw request in flight. */
 		java.util.Set<String> busy;
+		List<ClanData.Leaderboard> leaderboards;
 	}
 
 	/** What the sign-up buttons do. Called on the Swing thread. */
@@ -146,6 +147,60 @@ final class ClanTabs
 			addCard(column, card);
 		}
 		addCard(column, footer(view, in, refresh));
+	}
+
+	static void leaderboards(JPanel column, Input in, Runnable refresh)
+	{
+		column.removeAll();
+		if (in.getNotConnected() != null)
+		{
+			Card card = new Card("Leaderboards");
+			card.add(small(in.getNotConnected(), QUIET));
+			addCard(column, card);
+			return;
+		}
+		for (ClanData.Leaderboard board : in.getLeaderboards())
+		{
+			addCard(column, leaderboardCard(board, in));
+		}
+		if (in.getView().getFetchedAt() != null && in.getLeaderboards().isEmpty())
+		{
+			Card card = new Card("Leaderboards");
+			card.add(small("No leaderboards to show right now.", QUIET));
+			addCard(column, card);
+		}
+		addCard(column, footer(in.getView(), in, refresh));
+	}
+
+	private static Card leaderboardCard(ClanData.Leaderboard board, Input in)
+	{
+		Card card = new Card(board.getTitle());
+		if (board.getSubtitle() != null)
+		{
+			card.add(small(board.getSubtitle(), QUIET));
+		}
+		if (board.ends() != null)
+		{
+			card.add(small("Ends in " + ClanView.countdown(in.getNow(), board.ends()), QUIET));
+		}
+		List<ClanData.LeaderboardRow> rows = ClanView.orEmpty(board.getRows());
+		if (rows.isEmpty())
+		{
+			card.add(small("No entries yet.", QUIET));
+		}
+		card.gap();
+		String myName = board.getMe() != null ? board.getMe().getRsn() : null;
+		for (ClanData.LeaderboardRow row : rows)
+		{
+			card.addWide(PanelParts.rankRow(row.getRank(), row.getRsn(), row.getValue(), DropRecorder.sameRsn(row.getRsn(), myName)));
+		}
+		ClanData.LeaderboardRow mine = board.rowBelowTop();
+		if (mine != null)
+		{
+			card.gap();
+			card.addWide(PanelParts.rankRow(mine.getRank(), mine.getRsn(), mine.getValue(), true));
+		}
+		return card;
 	}
 
 	static void news(JPanel column, Input in, Runnable refresh)

@@ -19,6 +19,56 @@ final class ClanData
 	}
 
 	@Data
+	static class LeaderboardList
+	{
+		private List<Leaderboard> boards;
+	}
+
+	@Data
+	static class Leaderboard
+	{
+		private String title;
+		/** e.g. "November so far". */
+		private String subtitle;
+		/** When the competition ends; only sent for the current BOTW or SOTW. */
+		private String endsAt;
+		private List<LeaderboardRow> rows;
+		/** The member's own row; null when they aren't on this board. */
+		private LeaderboardRow me;
+
+		Instant ends()
+		{
+			return parse(endsAt);
+		}
+
+		/** The member's row when the top rows don't already include it. */
+		LeaderboardRow rowBelowTop()
+		{
+			if (me == null)
+			{
+				return null;
+			}
+			for (LeaderboardRow row : ClanView.orEmpty(rows))
+			{
+				if (DropRecorder.sameRsn(row.getRsn(), me.getRsn()))
+				{
+					return null;
+				}
+			}
+			return me;
+		}
+	}
+
+	@Data
+	static class LeaderboardRow
+	{
+		private Integer rank;
+		private String rsn;
+		/** Already formatted by the website, e.g. "412M" or "1.2M xp". */
+		private String value;
+	}
+
+	@Data
 	static class Event
 	{
 		private String id;

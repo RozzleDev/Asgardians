@@ -30,6 +30,8 @@ final class PanelParts
 	/** Width text wraps at inside a card. */
 	static final int TEXT_WIDTH = 150;
 	static final int GAP = 8;
+	/** Room for a position up to four digits. */
+	private static final int RANK_WIDTH = 26;
 
 	private PanelParts()
 	{
@@ -242,6 +244,24 @@ final class PanelParts
 		row.setBorder(new EmptyBorder(1, 0, 1, 0));
 		row.add(plain(label, QUIET), BorderLayout.WEST);
 		row.add(plain(value, TEXT), BorderLayout.EAST);
+		return row;
+	}
+
+	/** A leaderboard position, a name that is cut short when long, and a right-hand value. The member's own row stands out. */
+	static JPanel rankRow(Integer rank, String name, String value, boolean mine)
+	{
+		JPanel row = new JPanel(new BorderLayout(4, 0));
+		row.setOpaque(false);
+		row.setBorder(new EmptyBorder(1, 0, 1, 0));
+		JLabel place = plain(rank != null ? rank + "." : "-", QUIET);
+		place.setPreferredSize(new Dimension(RANK_WIDTH, place.getPreferredSize().height));
+		row.add(place, BorderLayout.WEST);
+		JLabel who = plain(escape(name), mine ? HIGHLIGHT : TEXT);
+		who.setToolTipText(name);
+		who.setMinimumSize(new Dimension(0, who.getPreferredSize().height));
+		who.setPreferredSize(new Dimension(0, who.getPreferredSize().height));
+		row.add(who, BorderLayout.CENTER);
+		row.add(plain(escape(value), mine ? HIGHLIGHT : TEXT), BorderLayout.EAST);
 		return row;
 	}
 

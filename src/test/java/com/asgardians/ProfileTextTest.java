@@ -63,6 +63,21 @@ public class ProfileTextTest
 	}
 
 	@Test
+	public void memberIsListedBelowTheTopOnlyWhenOutsideIt()
+	{
+		String json = "{\"boards\":[{\"title\":\"Boss of the Week: Vorkath\",\"endsAt\":\"2026-11-02T13:00:00Z\",\"rows\":["
+			+ "{\"rank\":1,\"rsn\":\"Str4tty\",\"value\":\"412 kills\"}],\"me\":{\"rank\":14,\"rsn\":\"Rozzle\",\"value\":\"31 kills\"}},"
+			+ "{\"title\":\"Clan credit\",\"subtitle\":\"November so far\",\"rows\":[{\"rank\":1,\"rsn\":\"Rozzle\",\"value\":\"412M\"}],"
+			+ "\"me\":{\"rank\":1,\"rsn\":\"Rozzle\",\"value\":\"412M\"}},"
+			+ "{\"title\":\"Drops\",\"rows\":[]}]}";
+		java.util.List<ClanData.Leaderboard> boards = new Gson().fromJson(json, ClanData.LeaderboardList.class).getBoards();
+		assertEquals(Integer.valueOf(14), boards.get(0).rowBelowTop().getRank());
+		assertEquals(java.time.Instant.parse("2026-11-02T13:00:00Z"), boards.get(0).ends());
+		assertNull(boards.get(1).rowBelowTop());
+		assertNull(boards.get(2).rowBelowTop());
+	}
+
+	@Test
 	public void readsTheTestServersReply()
 	{
 		String json = "{\"rsn\":\"Rozzle\",\"rank\":\"deputy_owner\",\"joinedAt\":\"2024-02-29T15:49:47.3633333\",\"daysInClan\":976,"
