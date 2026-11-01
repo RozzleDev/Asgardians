@@ -595,6 +595,10 @@ public class AsgardiansPlugin extends Plugin
 		{
 			return;
 		}
+		if (firstLoadThisLogin)
+		{
+			now.buyInReminders().forEach(this::chat);
+		}
 		for (ClanData.Event event : now.newlyLive(previous))
 		{
 			chat(event.getName() + " has started." + (event.getCodeword() != null ? " Codeword: " + event.getCodeword() : ""));

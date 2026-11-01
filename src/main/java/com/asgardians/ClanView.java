@@ -175,6 +175,24 @@ class ClanView
 		return out;
 	}
 
+	/** A chat line for each bingo-style event the member is in whose buy-in isn't marked as paid. Waitlisted members owe nothing yet. */
+	List<String> buyInReminders()
+	{
+		List<String> lines = new ArrayList<>();
+		for (EventView view : inGroup("bingo"))
+		{
+			ClanData.Event event = view.getEvent();
+			ClanData.Signup signup = event.getSignup();
+			if (signup != null && signup.isSignedUp() && !"waitlist".equals(signup.getMyStatus())
+				&& Boolean.FALSE.equals(signup.getPaid()))
+			{
+				lines.add("Your buy-in for " + event.getName() + " isn't marked as paid."
+					+ (signup.getNote() != null ? " " + signup.getNote() : ""));
+			}
+		}
+		return lines;
+	}
+
 	/** The chat lines for unread announcements at login, newest first; empty when everything has been read. */
 	List<String> loginNews(long lastReadId)
 	{

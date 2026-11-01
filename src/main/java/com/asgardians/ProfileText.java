@@ -51,6 +51,21 @@ final class ProfileText
 		return QuantityFormatter.quantityToStackSize(value);
 	}
 
+	/** How to link Discord, or null when it's already linked. */
+	static String discordHelp(ClanData.Me me)
+	{
+		if (me.isDiscordLinked())
+		{
+			return null;
+		}
+		if (me.getDiscordHelp() != null)
+		{
+			return me.getDiscordHelp();
+		}
+		return "To link Discord: in the Asgardians Discord, open the welcome panel, choose Set your name and enter "
+			+ (me.getRsn() != null ? me.getRsn() : "your RSN") + " exactly.";
+	}
+
 	/** What's left for the next rank, or null when the member isn't on the ladder or there's nothing above them. */
 	static String nextRank(ClanData.Me me)
 	{

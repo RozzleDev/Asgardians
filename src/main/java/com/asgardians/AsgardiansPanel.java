@@ -241,6 +241,11 @@ class AsgardiansPanel extends PluginPanel
 			card.addWide(statRow("Deaths", String.format("%,d", me.getDeaths())));
 		}
 		card.addWide(statRow("Discord", me.isDiscordLinked() ? "Linked" : "Not linked"));
+		String discordHelp = ProfileText.discordHelp(me);
+		if (discordHelp != null)
+		{
+			card.add(small(discordHelp, TODO));
+		}
 		String next = ProfileText.nextRank(me);
 		if (next != null)
 		{

@@ -74,6 +74,32 @@ public class ClanViewTest
 			"- News 6", "- News 5", "- News 4", "...and 2 more."), v.loginNews(1));
 	}
 
+	private static ClanView.EventView bingo(String id, String myStatus, Boolean paid, String note)
+	{
+		ClanData.Event e = event(id, "upcoming", "2026-12-01T18:00:00Z", false);
+		e.setKind("bingo");
+		ClanData.Signup signup = new ClanData.Signup();
+		signup.setMyStatus(myStatus);
+		signup.setPaid(paid);
+		signup.setNote(note);
+		e.setSignup(signup);
+		return new ClanView.EventView(e, null, List.of(), null);
+	}
+
+	@Test
+	public void remindsOnlyWhereABuyInIsOwed()
+	{
+		ClanView v = view(List.of(
+			bingo("owed", "signedUp", false, "Buy-in 10m."),
+			bingo("confirmed", "confirmed", false, null),
+			bingo("paid", "signedUp", true, null),
+			bingo("free", "signedUp", null, null),
+			bingo("waiting", "waitlist", false, null),
+			bingo("notin", "none", false, null)), List.of());
+		assertEquals(List.of("Your buy-in for Event owed isn't marked as paid. Buy-in 10m.",
+			"Your buy-in for Event confirmed isn't marked as paid."), v.buyInReminders());
+	}
+
 	@Test
 	public void reportsOnlyReviewedTileChanges()
 	{

@@ -79,6 +79,8 @@ final class ClanData
 		private Integer daysInClan;
 		private Long splitCredit;
 		private boolean discordLinked;
+		/** How to link Discord, replacing the plugin's own wording when the website sends it. */
+		private String discordHelp;
 		private boolean held;
 		private NextRank nextRank;
 		/** How many drops are on record, and their total GE value. */

@@ -48,6 +48,21 @@ public class ProfileTextTest
 	}
 
 	@Test
+	public void discordHelpIsOnlyForUnlinkedMembers()
+	{
+		ClanData.Me me = new ClanData.Me();
+		me.setRsn("Rozzle");
+		assertEquals("To link Discord: in the Asgardians Discord, open the welcome panel, choose Set your name and enter Rozzle exactly.",
+			ProfileText.discordHelp(me));
+
+		me.setDiscordHelp("Ask staff to link you.");
+		assertEquals("Ask staff to link you.", ProfileText.discordHelp(me));
+
+		me.setDiscordLinked(true);
+		assertNull(ProfileText.discordHelp(me));
+	}
+
+	@Test
 	public void readsTheTestServersReply()
 	{
 		String json = "{\"rsn\":\"Rozzle\",\"rank\":\"deputy_owner\",\"joinedAt\":\"2024-02-29T15:49:47.3633333\",\"daysInClan\":976,"
