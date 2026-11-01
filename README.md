@@ -9,7 +9,7 @@ It records your drops, pets, collection log, deaths and personal bests for the c
 - **Records** loot, pets, new collection log items, deaths and personal bests, with screenshots.
 - **Syncs** your personal bests and collection log, which is fetched automatically when you open it.
 - **Events tab:** bingo events, Boss of the Week, Skill of the Week and other clan events, with sign-ups and your team.
-- **Leaderboard tab:** the current Boss or Skill of the Week, plus this month's clan credit, collection log and drops.
+- **Leaderboard tab:** the current Boss or Skill of the Week, plus this month's clan credit, collection log, drops and deaths.
 - **News tab:** clan announcements. Unread ones are shown when you log in.
 - **Event codeword overlay** for events that use one.
 - **Status tab:** your connection, plus your clan rank, credits and totals.
