@@ -31,10 +31,21 @@ public interface AsgardiansConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "shareDeaths",
+		name = "Share my deaths",
+		description = "Send your deaths to the clan website. While this is off, new deaths aren't recorded and won't count on the leaderboard.",
+		position = 1
+	)
+	default boolean shareDeaths()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "uploadScreenshots",
 		name = "Upload screenshots",
 		description = "Attach a screenshot to valuable drops, pets and new collection log slots",
-		position = 1
+		position = 2
 	)
 	default boolean uploadScreenshots()
 	{
@@ -45,7 +56,7 @@ public interface AsgardiansConfig extends Config
 		keyName = "saveScreenshots",
 		name = "Save screenshots locally",
 		description = "Also save those screenshots to your RuneLite screenshots folder, under Asgardians",
-		position = 2
+		position = 3
 	)
 	default boolean saveScreenshots()
 	{
@@ -56,7 +67,7 @@ public interface AsgardiansConfig extends Config
 		keyName = "showCodeword",
 		name = "Show event codeword",
 		description = "While a clan event you're in is live, show its codeword and the time on screen so it appears in screenshots",
-		position = 3
+		position = 4
 	)
 	default boolean showCodeword()
 	{
@@ -67,7 +78,7 @@ public interface AsgardiansConfig extends Config
 		keyName = "eventMessages",
 		name = "Event messages in chat",
 		description = "Chat messages when an event starts, 15 minutes before events you're signed up for, and when your team's tiles are reviewed",
-		position = 4
+		position = 5
 	)
 	default boolean eventMessages()
 	{
@@ -78,7 +89,7 @@ public interface AsgardiansConfig extends Config
 		keyName = "newsMessages",
 		name = "Announcements in chat",
 		description = "A chat message when clan staff post a new announcement, and at login for any you haven't read",
-		position = 5
+		position = 6
 	)
 	default boolean newsMessages()
 	{

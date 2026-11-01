@@ -836,7 +836,7 @@ public class AsgardiansPlugin extends Plugin
 	public void onActorDeath(ActorDeath event)
 	{
 		Player local = client.getLocalPlayer();
-		if (event.getActor() == local && local != null && isRecording())
+		if (event.getActor() == local && local != null && isRecording() && config.shareDeaths())
 		{
 			recordDeath(local);
 		}
