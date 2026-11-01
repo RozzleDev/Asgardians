@@ -1,0 +1,275 @@
+package com.asgardians;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dimension;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.border.EmptyBorder;
+import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
+
+/** Shared building blocks for the side panel's tabs, so every tab looks the same. */
+final class PanelParts
+{
+	static final Color GOOD = ColorScheme.PROGRESS_COMPLETE_COLOR;
+	static final Color TODO = ColorScheme.PROGRESS_INPROGRESS_COLOR;
+	static final Color BAD = ColorScheme.PROGRESS_ERROR_COLOR;
+	/** Main text. */
+	static final Color TEXT = new Color(0xD8, 0xD8, 0xD8);
+	/** Secondary text. RuneLite's medium grey is too dark to read at this font size on the card background. */
+	static final Color QUIET = new Color(0xA0, 0xA0, 0xA0);
+	static final Color HIGHLIGHT = new Color(0xE8, 0x76, 0x3F);
+	static final Color TEST_SERVER = new Color(0xC9, 0xA2, 0x27);
+	/** Width text wraps at inside a card. */
+	static final int TEXT_WIDTH = 150;
+	static final int GAP = 8;
+
+	private PanelParts()
+	{
+	}
+
+	/** A titled dark box that stacks its rows. */
+	static class Card extends JPanel
+	{
+		Card(String title)
+		{
+			setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+			setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			setBorder(new EmptyBorder(8, 8, 8, 8));
+			setAlignmentX(Component.LEFT_ALIGNMENT);
+			if (title != null)
+			{
+				JLabel heading = new JLabel(wrap(escape(title)));
+				heading.setFont(FontManager.getRunescapeBoldFont());
+				heading.setForeground(Color.WHITE);
+				add(heading);
+				add(Box.createVerticalStrut(4));
+			}
+		}
+
+		@Override
+		public Component add(Component component)
+		{
+			if (component instanceof JComponent)
+			{
+				((JComponent) component).setAlignmentX(Component.LEFT_ALIGNMENT);
+			}
+			return super.add(component);
+		}
+
+		/** A row that stretches to the card's width. */
+		void addWide(JComponent component)
+		{
+			component.setAlignmentX(Component.LEFT_ALIGNMENT);
+			component.setMaximumSize(new Dimension(Integer.MAX_VALUE, component.getPreferredSize().height));
+			super.add(component);
+		}
+
+		void gap()
+		{
+			add(Box.createVerticalStrut(6));
+		}
+
+		@Override
+		public Dimension getMaximumSize()
+		{
+			return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+		}
+	}
+
+	/** Lays out cards top to bottom with a gap between. */
+	static JPanel column()
+	{
+		JPanel column = new JPanel();
+		column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+		column.setOpaque(false);
+		return column;
+	}
+
+	static void addCard(JPanel column, JComponent card)
+	{
+		if (column.getComponentCount() > 0)
+		{
+			column.add(Box.createVerticalStrut(GAP));
+		}
+		card.setAlignmentX(Component.LEFT_ALIGNMENT);
+		column.add(card);
+	}
+
+	static JLabel heading(String text)
+	{
+		JLabel label = new JLabel(wrap(escape(text)));
+		label.setFont(FontManager.getRunescapeFont());
+		label.setForeground(Color.WHITE);
+		return label;
+	}
+
+	/** A coloured dot and wrapped text. */
+	static JLabel status(Color colour, String text)
+	{
+		JLabel label = new JLabel(wrap(dot(colour) + " " + escape(text)));
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(colour == QUIET ? TEXT : colour);
+		return label;
+	}
+
+	static JLabel check(boolean done, String doneText, String todoText)
+	{
+		JLabel label = new JLabel(wrap((done ? "✔ " : "✖ ") + escape(done ? doneText : todoText)));
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(done ? GOOD : TODO);
+		label.setBorder(new EmptyBorder(1, 0, 1, 0));
+		return label;
+	}
+
+	/** Wrapped small text. */
+	static JLabel small(String text, Color colour)
+	{
+		JLabel label = new JLabel(wrap(escape(text)));
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(colour);
+		return label;
+	}
+
+	/** Single-line text that doesn't wrap. */
+	static JLabel plain(String text, Color colour)
+	{
+		JLabel label = new JLabel(text);
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(colour);
+		return label;
+	}
+
+	static JLabel badge(String text, Color colour)
+	{
+		JLabel label = new JLabel(text);
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setOpaque(true);
+		label.setBackground(colour);
+		label.setForeground(Color.BLACK);
+		label.setBorder(BorderFactory.createEmptyBorder(1, 4, 1, 4));
+		return label;
+	}
+
+	/** A dot, a name that is cut short when long, and a right-hand value. */
+	static JPanel dotRow(Color colour, String text, String right, String tooltip)
+	{
+		JPanel row = new JPanel(new BorderLayout(4, 0));
+		row.setOpaque(false);
+		row.setBorder(new EmptyBorder(1, 0, 1, 0));
+		row.setToolTipText(tooltip);
+		JLabel dot = plain("●", colour);
+		dot.setToolTipText(tooltip);
+		row.add(dot, BorderLayout.WEST);
+		JLabel what = plain(text, TEXT);
+		what.setToolTipText(tooltip != null ? tooltip : text);
+		what.setMinimumSize(new Dimension(0, what.getPreferredSize().height));
+		what.setPreferredSize(new Dimension(0, what.getPreferredSize().height));
+		row.add(what, BorderLayout.CENTER);
+		if (right != null)
+		{
+			row.add(plain(right, QUIET), BorderLayout.EAST);
+		}
+		return row;
+	}
+
+	/** A heading above a group of cards. */
+	static JLabel section(String text)
+	{
+		JLabel label = new JLabel(text);
+		label.setFont(FontManager.getRunescapeBoldFont());
+		label.setForeground(HIGHLIGHT);
+		return label;
+	}
+
+	/** Clickable text, for actions that don't need a full button. */
+	static JLabel link(String text, Runnable action)
+	{
+		JLabel label = plain(text, HIGHLIGHT);
+		label.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+		label.addMouseListener(new java.awt.event.MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(java.awt.event.MouseEvent e)
+			{
+				action.run();
+			}
+
+			@Override
+			public void mouseEntered(java.awt.event.MouseEvent e)
+			{
+				label.setForeground(Color.WHITE);
+			}
+
+			@Override
+			public void mouseExited(java.awt.event.MouseEvent e)
+			{
+				label.setForeground(HIGHLIGHT);
+			}
+		});
+		return label;
+	}
+
+	/** One line with something on the left and something on the right; either can be null. */
+	static JPanel spread(JComponent left, JComponent right)
+	{
+		JPanel row = new JPanel(new BorderLayout(4, 0));
+		row.setOpaque(false);
+		row.setBorder(new EmptyBorder(1, 0, 1, 0));
+		if (left != null)
+		{
+			row.add(left, BorderLayout.WEST);
+		}
+		if (right != null)
+		{
+			row.add(right, BorderLayout.EAST);
+		}
+		return row;
+	}
+
+	/** A label on the left and its value on the right. */
+	static JPanel statRow(String label, String value)
+	{
+		JPanel row = new JPanel(new BorderLayout(4, 0));
+		row.setOpaque(false);
+		row.setBorder(new EmptyBorder(1, 0, 1, 0));
+		row.add(plain(label, QUIET), BorderLayout.WEST);
+		row.add(plain(value, TEXT), BorderLayout.EAST);
+		return row;
+	}
+
+	static JButton button(String text, Runnable action)
+	{
+		JButton button = new JButton(text);
+		button.setFocusPainted(false);
+		button.addActionListener(e -> action.run());
+		return button;
+	}
+
+	static String wrap(String html)
+	{
+		return "<html><div style='width:" + TEXT_WIDTH + "px'>" + html + "</div></html>";
+	}
+
+	static String dot(Color colour)
+	{
+		return "<span style='color:" + hex(colour) + "'>●</span>";
+	}
+
+	static String hex(Color colour)
+	{
+		return String.format("#%02x%02x%02x", colour.getRed(), colour.getGreen(), colour.getBlue());
+	}
+
+	static String escape(String text)
+	{
+		return text == null ? "" : text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+	}
+}
