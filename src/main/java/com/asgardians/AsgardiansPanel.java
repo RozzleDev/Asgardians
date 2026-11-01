@@ -18,7 +18,6 @@ import static com.asgardians.PanelParts.status;
 import static com.asgardians.PanelParts.wrap;
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.GridLayout;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -31,14 +30,12 @@ import javax.swing.border.EmptyBorder;
 import lombok.Value;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
-import net.runelite.client.ui.components.materialtabs.MaterialTab;
-import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
 import net.runelite.client.util.QuantityFormatter;
 
 /**
  * Side panel with four tabs. Status: connection, personal bests, collection log and recent submissions.
- * Events: live and upcoming events, your team and board. Leaders: the current competition and this month's
- * leaderboards. News: staff announcements. Swing thread only.
+ * Events: live and upcoming events, your team and board. Leaderboard: the current competition and this month's
+ * boards. News: staff announcements. Swing thread only.
  */
 class AsgardiansPanel extends PluginPanel
 {
@@ -75,7 +72,7 @@ class AsgardiansPanel extends PluginPanel
 	private final JPanel eventsTab = PanelParts.column();
 	private final JPanel leadersTab = PanelParts.column();
 	private final JPanel newsTab = PanelParts.column();
-	private final MaterialTab newsButton;
+	private final TabBar.Tab newsButton;
 	private final Runnable syncPbs;
 	private final Runnable refreshClan;
 	private final Runnable newsOpened;
@@ -103,23 +100,12 @@ class AsgardiansPanel extends PluginPanel
 
 		JPanel display = new JPanel(new BorderLayout());
 		display.setOpaque(false);
-		MaterialTabGroup tabs = new MaterialTabGroup(display);
-		// Four tabs don't fit across the side panel: the default layout hides the ones that wrap, and one row cuts the names short.
-		tabs.setLayout(new GridLayout(2, 2));
+		TabBar tabs = new TabBar(display);
 		tabs.setAlignmentX(LEFT_ALIGNMENT);
-		MaterialTab status = new MaterialTab("Status", tabs, statusTab);
-		MaterialTab events = new MaterialTab("Events", tabs, eventsTab);
-		MaterialTab leaders = new MaterialTab("Leaders", tabs, leadersTab);
-		newsButton = new MaterialTab("News", tabs, newsTab);
-		newsButton.setOnSelectEvent(() ->
-		{
-			newsOpened.run();
-			return true;
-		});
-		tabs.addTab(status);
-		tabs.addTab(events);
-		tabs.addTab(leaders);
-		tabs.addTab(newsButton);
+		TabBar.Tab status = tabs.addTab("Status", statusTab, null);
+		tabs.addTab("Events", eventsTab, null);
+		tabs.addTab("Leaderboard", leadersTab, null);
+		newsButton = tabs.addTab("News", newsTab, newsOpened);
 		tabs.select(status);
 		top.add(tabs);
 		top.add(Box.createVerticalStrut(8));
@@ -152,7 +138,7 @@ class AsgardiansPanel extends PluginPanel
 		statusTab.repaint();
 	}
 
-	/** Redraws the Events, Leaders and News tabs. */
+	/** Redraws the Events, Leaderboard and News tabs. */
 	void updateClan(ClanTabs.Input input)
 	{
 		ClanTabs.events(eventsTab, input, refreshClan, eventActions);

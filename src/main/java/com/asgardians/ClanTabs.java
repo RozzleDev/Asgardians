@@ -26,7 +26,7 @@ import lombok.Value;
 import net.runelite.client.util.LinkBrowser;
 import net.runelite.client.util.QuantityFormatter;
 
-/** Builds the Events, Leaders and News tabs from a {@link ClanView}. Swing thread only. */
+/** Builds the Events, Leaderboard and News tabs from a {@link ClanView}. Swing thread only. */
 final class ClanTabs
 {
 	/** What the tabs need besides the view itself. */
