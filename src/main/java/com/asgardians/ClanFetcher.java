@@ -61,6 +61,8 @@ class ClanFetcher
 			Map<String, ClanData.Team> teams = new ConcurrentHashMap<>();
 			Map<String, List<ClanData.Team>> standings = new ConcurrentHashMap<>();
 			Map<String, ClanData.Board> boards = new ConcurrentHashMap<>();
+			Map<String, Map<String, ClanData.Board>> teamBoards = new ConcurrentHashMap<>();
+			Map<String, List<ClanData.Drop>> drops = new ConcurrentHashMap<>();
 			Map<String, List<ClanData.Announcement>> news = new ConcurrentHashMap<>();
 			AtomicInteger failure = new AtomicInteger();
 
@@ -79,10 +81,38 @@ class ClanFetcher
 					calls.add(then -> api.get(ApiClient.endpoint(address, "events/" + id + "/teams"), key,
 						ClanData.TeamList.class, r -> store(r, failure, body -> standings.put(id, ClanView.orEmpty(body.getTeams())), then)));
 				}
-				if (withBoards && event.isLive() && event.isHasBoard() && event.getTeamId() != null)
+				if (withBoards && event.isLive() && event.isHasBoard())
 				{
-					calls.add(then -> api.get(ApiClient.endpoint(address, "events/" + id + "/board"), key,
-						ClanData.Board.class, r -> store(r, failure, body -> boards.put(id, body), then)));
+					// Every team's board. A website without it may answer 404, or 200 with its web page instead of
+					// JSON, so anything but a usable list falls back to the member's own board.
+					calls.add(then -> api.get(ApiClient.endpoint(address, "events/" + id + "/boards"), key,
+						ClanData.BoardList.class, r ->
+						{
+							boolean usable = r.ok() && r.getBody().getBoards() != null;
+							if (!usable && event.getTeamId() != null)
+							{
+								api.get(ApiClient.endpoint(address, "events/" + id + "/board"), key,
+									ClanData.Board.class, own -> store(own, failure, body -> boards.put(id, body), then));
+								return;
+							}
+							store(r, failure, body -> teamBoards.put(id, byTeam(body)), then);
+						}));
+					// Recent drops. Optional: a website without them (404, or its web page) isn't a failure.
+					calls.add(then -> api.get(ApiClient.endpoint(address, "events/" + id + "/drops"), key,
+						ClanData.DropList.class, r ->
+						{
+							try
+							{
+								if (r.ok() && r.getBody().getDrops() != null)
+								{
+									drops.put(id, r.getBody().getDrops());
+								}
+							}
+							finally
+							{
+								then.run();
+							}
+						}));
 				}
 			}
 			calls.add(then -> api.get(ApiClient.endpoint(address, "announcements"), key,
@@ -93,13 +123,25 @@ class ClanFetcher
 				List<ClanView.EventView> views = new ArrayList<>();
 				for (ClanData.Event event : list)
 				{
-					ClanData.Board board = boards.get(event.getId());
-					if (board == null && !withBoards && previous != null)
+					String id = event.getId();
+					ClanData.Board board = boards.get(id);
+					Map<String, ClanData.Board> all = teamBoards.getOrDefault(id, Map.of());
+					List<ClanData.Drop> recent = drops.get(id);
+					if (board == null && all.isEmpty() && !withBoards && previous != null)
 					{
-						board = previousBoard(previous, event.getId());
+						ClanView.EventView before = previousView(previous, id);
+						if (before != null)
+						{
+							board = before.getBoard();
+							all = before.getTeamBoards();
+							recent = before.getDrops();
+						}
 					}
-					views.add(new ClanView.EventView(event, teams.get(event.getId()),
-						standings.getOrDefault(event.getId(), List.of()), board));
+					if (board == null && event.getTeamId() != null)
+					{
+						board = all.get(event.getTeamId());
+					}
+					views.add(new ClanView.EventView(event, teams.get(id), standings.getOrDefault(id, List.of()), board, all, recent));
 				}
 				List<ClanData.Announcement> items = news.containsKey("news")
 					? news.get("news")
@@ -143,15 +185,28 @@ class ClanFetcher
 		}
 	}
 
-	private static ClanData.Board previousBoard(ClanView previous, String eventId)
+	private static ClanView.EventView previousView(ClanView previous, String eventId)
 	{
 		for (ClanView.EventView view : previous.getEvents())
 		{
 			if (view.getEvent().getId().equals(eventId))
 			{
-				return view.getBoard();
+				return view;
 			}
 		}
 		return null;
+	}
+
+	private static Map<String, ClanData.Board> byTeam(ClanData.BoardList list)
+	{
+		Map<String, ClanData.Board> out = new java.util.HashMap<>();
+		for (ClanData.TeamBoard board : ClanView.orEmpty(list.getBoards()))
+		{
+			if (board.getTeamId() != null)
+			{
+				out.put(board.getTeamId(), board);
+			}
+		}
+		return out;
 	}
 }

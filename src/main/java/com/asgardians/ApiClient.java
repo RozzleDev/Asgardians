@@ -290,6 +290,17 @@ class ApiClient
 	}
 
 	/** Withdraws the member from an event. */
+	/** Puts a drop that fits several tiles on the one the member picked. */
+	void chooseTile(String address, String installKey, String eventId, String dropId, String tileId,
+		Consumer<GetResult<ClanData.TileChoice>> done)
+	{
+		JsonObject body = new JsonObject();
+		body.addProperty("tileId", tileId);
+		send(new Request.Builder().url(endpoint(address, "events/" + eventId + "/drops/" + dropId + "/tile"))
+			.header(INSTALL_KEY_HEADER, installKey)
+			.post(RequestBody.create(JSON, gson.toJson(body))).build(), ClanData.TileChoice.class, done);
+	}
+
 	void withdraw(String address, String installKey, String eventId, Consumer<GetResult<ClanData.SignupResult>> done)
 	{
 		send(new Request.Builder().url(endpoint(address, "events/" + eventId + "/signup"))

@@ -77,7 +77,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "eventMessages",
 		name = "Event messages in chat",
-		description = "Chat messages when an event starts, 15 minutes before events you're signed up for, and when your team's tiles are reviewed",
+		description = "Chat messages when an event starts, 15 minutes before events you're signed up for, and when any team in your event submits, gets an item accepted or completes a tile",
 		position = 5
 	)
 	default boolean eventMessages()
@@ -92,6 +92,17 @@ public interface AsgardiansConfig extends Config
 		position = 6
 	)
 	default boolean newsMessages()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "teamBadges",
+		name = "Team badges in clan chat",
+		description = "While a clan event with teams is live, show each player's team in place of their clan rank icon in clan chat. Only players in the event get a badge.",
+		position = 7
+	)
+	default boolean teamBadges()
 	{
 		return true;
 	}

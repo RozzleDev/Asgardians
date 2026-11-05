@@ -62,8 +62,7 @@ final class ProfileText
 		{
 			return me.getDiscordHelp();
 		}
-		return "To link Discord: in the Asgardians Discord, open the welcome panel, choose Set your name and enter "
-			+ (me.getRsn() != null ? me.getRsn() : "your RSN") + " exactly.";
+		return "To link Discord, use the /asg link command in any of the Asgardians Clan Discord channels.";
 	}
 
 	/** What's left for the next rank, or null when the member isn't on the ladder or there's nothing above them. */

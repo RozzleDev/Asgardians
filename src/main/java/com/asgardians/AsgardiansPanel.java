@@ -19,8 +19,13 @@ import static com.asgardians.PanelParts.wrap;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
@@ -28,14 +33,15 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 import lombok.Value;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.QuantityFormatter;
 
 /**
  * Side panel with four tabs. Status: connection, personal bests, collection log and recent submissions.
- * Events: live and upcoming events, your team and board. Leaderboard: the current competition and this month's
- * boards. News: staff announcements. Swing thread only.
+ * Events: the running event by team, and the schedule. Leaderboard: the current competition and this month's or
+ * this year's boards. News: staff announcements. Swing thread only.
  */
 class AsgardiansPanel extends PluginPanel
 {
@@ -77,9 +83,30 @@ class AsgardiansPanel extends PluginPanel
 	private final Runnable refreshClan;
 	private final Runnable newsOpened;
 	private final ClanTabs.Actions eventActions;
+	private final ConfigManager configManager;
+	/** The last data drawn, so the panel's own controls can redraw without waiting for a reload. */
+	private ClanTabs.Input lastInput;
+	/** The member's choices: Events page, open event and teams, leaderboard period and folded boards. */
+	private String eventsPage;
+	private String eventId;
+	private final Map<String, String> teams = new HashMap<>();
+	private String period;
+	private final Set<String> folded = new LinkedHashSet<>();
 
-	AsgardiansPanel(Runnable syncPbs, Runnable refreshClan, Runnable newsOpened, ClanTabs.Actions eventActions)
+	private static final String PERIOD_KEY = "leaderboardPeriod";
+	private static final String FOLDED_KEY = "foldedLeaderboards";
+
+	AsgardiansPanel(ConfigManager configManager, Runnable syncPbs, Runnable refreshClan, Runnable newsOpened,
+		ClanTabs.Actions eventActions)
 	{
+		this.configManager = configManager;
+		String savedPeriod = configManager.getConfiguration(AsgardiansConfig.GROUP, PERIOD_KEY);
+		period = ClanTabs.PERIODS.contains(savedPeriod) ? savedPeriod : ClanTabs.MONTH;
+		String savedFolded = configManager.getConfiguration(AsgardiansConfig.GROUP, FOLDED_KEY);
+		if (savedFolded != null && !savedFolded.isEmpty())
+		{
+			folded.addAll(Arrays.asList(savedFolded.split("\n")));
+		}
 		this.syncPbs = syncPbs;
 		this.refreshClan = refreshClan;
 		this.newsOpened = newsOpened;
@@ -117,7 +144,7 @@ class AsgardiansPanel extends PluginPanel
 			true, false, false, null, false, false, null, false, null));
 		updateClan(new ClanTabs.Input(ClanView.empty(), java.util.Map.of(), 0, "Log in to see clan events.",
 			java.time.ZoneId.systemDefault(), java.time.Instant.now(), AsgardiansConfig.DEFAULT_API_ADDRESS,
-			java.util.Map.of(), java.util.Set.of(), java.util.Set.of(), List.of()));
+			java.util.Map.of(), java.util.Set.of(), java.util.Set.of(), java.util.Map.of()));
 	}
 
 	/** Redraws the Status tab. */
@@ -141,8 +168,10 @@ class AsgardiansPanel extends PluginPanel
 	/** Redraws the Events, Leaderboard and News tabs. */
 	void updateClan(ClanTabs.Input input)
 	{
-		ClanTabs.events(eventsTab, input, refreshClan, eventActions);
-		ClanTabs.leaderboards(leadersTab, input, refreshClan);
+		lastInput = input;
+		ClanTabs.Ui ui = new ClanTabs.Ui(eventsPage, eventId, new HashMap<>(teams), period, new LinkedHashSet<>(folded));
+		ClanTabs.events(eventsTab, input, refreshClan, eventActions, ui, uiActions);
+		ClanTabs.leaderboards(leadersTab, input, refreshClan, ui, uiActions);
 		ClanTabs.news(newsTab, input, refreshClan);
 		int unread = input.getNotConnected() == null ? input.getView().unread(input.getLastReadAnnouncementId()) : 0;
 		newsButton.setText(unread > 0 ? "News (" + unread + ")" : "News");
@@ -152,6 +181,58 @@ class AsgardiansPanel extends PluginPanel
 		leadersTab.repaint();
 		newsTab.revalidate();
 		newsTab.repaint();
+	}
+
+	/** The panel's own controls: they change what's shown, then redraw from the data already loaded. */
+	private final ClanTabs.UiActions uiActions = new ClanTabs.UiActions()
+	{
+		@Override
+		public void eventsPage(String page)
+		{
+			eventsPage = page;
+			redraw();
+		}
+
+		@Override
+		public void event(String id)
+		{
+			eventId = id;
+			redraw();
+		}
+
+		@Override
+		public void team(String event, String team)
+		{
+			teams.put(event, team);
+			redraw();
+		}
+
+		@Override
+		public void period(String value)
+		{
+			period = value;
+			configManager.setConfiguration(AsgardiansConfig.GROUP, PERIOD_KEY, value);
+			redraw();
+		}
+
+		@Override
+		public void fold(String title)
+		{
+			if (!folded.remove(title))
+			{
+				folded.add(title);
+			}
+			configManager.setConfiguration(AsgardiansConfig.GROUP, FOLDED_KEY, String.join("\n", folded));
+			redraw();
+		}
+	};
+
+	private void redraw()
+	{
+		if (lastInput != null)
+		{
+			updateClan(lastInput);
+		}
 	}
 
 	// ---- Status tab ----

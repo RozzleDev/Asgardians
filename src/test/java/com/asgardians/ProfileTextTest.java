@@ -52,7 +52,7 @@ public class ProfileTextTest
 	{
 		ClanData.Me me = new ClanData.Me();
 		me.setRsn("Rozzle");
-		assertEquals("To link Discord: in the Asgardians Discord, open the welcome panel, choose Set your name and enter Rozzle exactly.",
+		assertEquals("To link Discord, use the /asg link command in any of the Asgardians Clan Discord channels.",
 			ProfileText.discordHelp(me));
 
 		me.setDiscordHelp("Ask staff to link you.");

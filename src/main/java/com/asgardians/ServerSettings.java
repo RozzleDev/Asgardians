@@ -20,10 +20,12 @@ class ServerSettings
 		/** Loot gets a screenshot when it's valuable enough or includes a watched item. */
 		boolean wantsLoot(Record record)
 		{
-			if (record.totalValue >= minLootValue)
-			{
-				return true;
-			}
+			return record.totalValue >= minLootValue || watched(record);
+		}
+
+		/** The record includes an item on the watch list. */
+		boolean watched(Record record)
+		{
 			if (watch != null && record.getItems() != null)
 			{
 				for (Record.Item item : record.getItems())

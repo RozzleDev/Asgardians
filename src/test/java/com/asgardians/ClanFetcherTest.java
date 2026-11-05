@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import okhttp3.OkHttpClient;
@@ -26,6 +27,12 @@ public class ClanFetcherTest
 	private final ClanFetcher fetcher = new ClanFetcher(new ApiClient(new OkHttpClient(), new Gson()));
 	private volatile boolean boardFails;
 	private volatile int boardStatus = 200;
+	/** 404 stands in for a website that only has each member's own board. */
+	private volatile int boardsStatus = 404;
+	/** A website without /boards that answers with its own web page instead of a 404. */
+	private volatile boolean boardsHtml;
+	/** Whether the website has recent drops. Without them it answers 404. */
+	private volatile boolean hasDrops;
 
 	@Before
 	public void start() throws IOException
@@ -57,6 +64,23 @@ public class ClanFetcherTest
 			{
 				respond(exchange, 200, "{\"teams\":[{\"id\":\"asg\",\"name\":\"Asgardians\",\"points\":155,\"rank\":1},"
 					+ "{\"id\":\"eu\",\"name\":\"Clan Europe\",\"points\":136,\"rank\":2}]}");
+			}
+			else if (path.endsWith("/drops"))
+			{
+				respond(exchange, hasDrops ? 200 : 404, !hasDrops ? "{}" : "{\"drops\":["
+					+ "{\"id\":\"d2\",\"item\":\"Unicorn horn\",\"rsn\":\"Rozzle\",\"teamId\":\"asg\",\"state\":\"choose\",\"canChoose\":true,"
+					+ "\"options\":[{\"tileId\":\"a\",\"name\":\"Horns\"},{\"tileId\":\"b\",\"name\":\"Anything white\"}]},"
+					+ "{\"id\":\"d1\",\"item\":\"Twisted bow\",\"rsn\":\"Str4tty\",\"teamId\":\"asg\",\"tileName\":\"CoX purple\",\"state\":\"accepted\"}]}");
+			}
+			else if (path.endsWith("/boards") && boardsHtml)
+			{
+				respond(exchange, 200, "<!doctype html><html><body>Asgardians</body></html>");
+			}
+			else if (path.endsWith("/boards"))
+			{
+				respond(exchange, boardsStatus, boardsStatus != 200 ? "{}" : "{\"boards\":["
+					+ "{\"teamId\":\"asg\",\"tiles\":[{\"id\":\"cox\",\"name\":\"CoX purple\",\"state\":\"accepted\"}]},"
+					+ "{\"teamId\":\"eu\",\"tiles\":[{\"id\":\"cox\",\"name\":\"CoX purple\",\"state\":\"pending\",\"have\":1,\"need\":3}]}]}");
 			}
 			else if (path.endsWith("/board"))
 			{
@@ -155,6 +179,40 @@ public class ClanFetcherTest
 		assertEquals(0, result.getFailureStatus());
 		assertNull(result.getView().getError());
 		assertNull(result.getView().live().get(0).getBoard());
+	}
+
+	@Test
+	public void loadsEveryTeamsBoardWhenTheWebsiteHasThem() throws Exception
+	{
+		boardsStatus = 200;
+		ClanView.EventView live = fetch(true, null).getView().live().get(0);
+		assertEquals("accepted", live.getBoard().getTiles().get(0).getState());
+		assertEquals("1/3", live.boardOf("eu").getTiles().get(0).progress());
+		assertEquals(List.of("asg", "eu"), live.teams().stream().map(ClanData.Team::getId).collect(java.util.stream.Collectors.toList()));
+	}
+
+	@Test
+	public void aWebPageInsteadOfEveryTeamsBoardFallsBackToTheMembersOwn() throws Exception
+	{
+		boardsHtml = true;
+		ClanView.EventView live = fetch(true, null).getView().live().get(0);
+		assertNotNull(live.getBoard());
+		assertNotNull(live.boardOf(live.getTeam().getId()));
+	}
+
+	@Test
+	public void recentDropsAreOptional() throws Exception
+	{
+		ClanView.EventView without = fetch(true, null).getView().live().get(0);
+		assertNull(without.getDrops());
+		hasDrops = true;
+		ClanFetcher.Result result = fetch(true, null);
+		assertEquals(0, result.getFailureStatus());
+		ClanView.EventView with = result.getView().live().get(0);
+		assertEquals(2, with.getDrops().size());
+		assertEquals(List.of("d2"), with.choices().stream().map(ClanData.Drop::getId).collect(java.util.stream.Collectors.toList()));
+		// A reload that skips boards keeps the drops it had.
+		assertEquals(2, fetch(false, result.getView()).getView().live().get(0).getDrops().size());
 	}
 
 	@Test

@@ -56,6 +56,7 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.ServerNpcLoot;
+import net.runelite.client.game.ChatIconManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.plugins.Plugin;
@@ -146,9 +147,20 @@ public class AsgardiansPlugin extends Plugin
 	private static final long CLAN_REFRESH_MILLIS = 5 * 60_000;
 	private static final long BOARD_REFRESH_MILLIS = 2 * 60_000;
 	private static final java.time.Duration REMINDER_WINDOW = java.time.Duration.ofMinutes(15);
+	/** How long after sending a watched item to reload the boards, giving the website time to match it. */
+	private static final long WATCHED_REFRESH_SECONDS = 20;
+	/** How long an instant "Drop submitted" message stands in for the website's own "submitted" message. */
+	private static final long ANNOUNCED_MILLIS = TimeUnit.MINUTES.toMillis(10);
+	/** Tiles the member was told about when the drop happened, by tile key, with the time. */
+	private final Map<String, Long> announcedDrops = new java.util.concurrent.ConcurrentHashMap<>();
+	/** Drops the member has been told to pick a tile for, so each is mentioned once. */
+	private final Set<String> choicesAnnounced = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	@Inject
 	private OverlayManager overlayManager;
+
+	@Inject
+	private ChatIconManager chatIconManager;
 
 	private ClanFetcher clanFetcher;
 	private CodewordOverlay codewordOverlay;
@@ -156,7 +168,14 @@ public class AsgardiansPlugin extends Plugin
 	private volatile long lastClanFetch;
 	/** The member's clan profile for the Connection card. */
 	private volatile ClanData.Me me;
-	private volatile List<ClanData.Leaderboard> leaderboards = List.of();
+	/** Leaderboards by period (ClanTabs.MONTH, YEAR, ALL). */
+	private final Map<String, List<ClanData.Leaderboard>> leaderboards = new java.util.concurrent.ConcurrentHashMap<>();
+	/** Chat icons reserved for team badges, one per team slot, and what each currently shows. */
+	private final int[] badgeIcons = new int[TeamBadges.MAX_TEAMS];
+	private final String[] badgePainted = new String[TeamBadges.MAX_TEAMS];
+	private boolean badgesReserved;
+	/** Players in the live event, by {@link TeamBadges#key}, to their team's badge. */
+	private volatile Map<String, TeamBadges.Badge> badgePlayers = Map.of();
 	/** Set until the first load after logging in, which lists any unread announcements in chat. */
 	private volatile boolean loginNewsPending = true;
 	private final AtomicBoolean fetchingClan = new AtomicBoolean();
@@ -274,10 +293,20 @@ public class AsgardiansPlugin extends Plugin
 		});
 
 		clanFetcher = new ClanFetcher(api);
+		// Chat icons can't be given back, so turning the plugin off and on again reuses the same ones.
+		// registerChatIcon works from any thread; reserveChatIcon must run on the client thread.
+		if (!badgesReserved)
+		{
+			for (int i = 0; i < badgeIcons.length; i++)
+			{
+				badgeIcons[i] = chatIconManager.registerChatIcon(new BufferedImage(13, 13, BufferedImage.TYPE_INT_ARGB));
+			}
+			badgesReserved = true;
+		}
 		codewordOverlay = new CodewordOverlay(this, config, () -> clanView);
 		overlayManager.add(codewordOverlay);
 
-		panel = new AsgardiansPanel(() -> executor.execute(this::syncPbsNow),
+		panel = new AsgardiansPanel(configManager, () -> executor.execute(this::syncPbsNow),
 			() -> executor.execute(() -> refreshClan(true)),
 			() -> clientThread.invokeLater(this::markNewsRead),
 			new ClanTabs.Actions()
@@ -299,6 +328,12 @@ public class AsgardiansPlugin extends Plugin
 				{
 					AsgardiansPlugin.this.toggleSignups(event);
 				}
+
+				@Override
+				public void chooseTile(ClanData.Event event, ClanData.Drop drop, ClanData.TileOption tile)
+				{
+					AsgardiansPlugin.this.chooseTile(event, drop, tile);
+				}
 			});
 		navButton = NavigationButton.builder()
 			.tooltip("Asgardians Clan")
@@ -319,13 +354,23 @@ public class AsgardiansPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
-		flushTask.cancel(false);
-		settingsTask.cancel(false);
-		pbTask.cancel(false);
-		clanTask.cancel(false);
-		overlayManager.remove(codewordOverlay);
+		// Null checks: RuneLite also calls this after a start that failed part way.
+		for (java.util.concurrent.Future<?> task : new java.util.concurrent.Future<?>[]{flushTask, settingsTask, pbTask, clanTask})
+		{
+			if (task != null)
+			{
+				task.cancel(false);
+			}
+		}
+		if (codewordOverlay != null)
+		{
+			overlayManager.remove(codewordOverlay);
+		}
 		executor.execute(this::flush);
-		clientToolbar.removeNavigation(navButton);
+		if (navButton != null)
+		{
+			clientToolbar.removeNavigation(navButton);
+		}
 		navButton = null;
 		panel = null;
 	}
@@ -428,6 +473,10 @@ public class AsgardiansPlugin extends Plugin
 			chatPrivacy.privateMessage(Text.removeTags(event.getName()), System.currentTimeMillis());
 			return;
 		}
+		if (messageType == ChatMessageType.CLAN_CHAT && sharing && config.teamBadges())
+		{
+			addTeamBadge(event);
+		}
 		if (!isRecording())
 		{
 			return;
@@ -477,6 +526,33 @@ public class AsgardiansPlugin extends Plugin
 				recorder.clanPet(clanPet, local.getName(), now);
 			}
 		}
+	}
+
+	/** Puts the sender's team badge in place of their rank icon, while an event with teams is live. Client thread. */
+	private void addTeamBadge(ChatMessage event)
+	{
+		TeamBadges.Badge badge = badgePlayers.get(TeamBadges.key(event.getName()));
+		int index = badge != null ? chatIconManager.chatIconIndex(badgeIcons[badge.getSlot()]) : -1;
+		if (index >= 0)
+		{
+			event.getMessageNode().setName(TeamBadges.withBadge(event.getMessageNode().getName(), index));
+		}
+	}
+
+	/** Repaints the badge icons for the current event's teams and remembers who is on which. Client thread. */
+	private void updateTeamBadges(ClanView view)
+	{
+		Map<String, TeamBadges.Badge> teams = TeamBadges.teams(view);
+		for (TeamBadges.Badge badge : teams.values())
+		{
+			String painted = badge.getTag() + badge.getColour().getRGB();
+			if (!painted.equals(badgePainted[badge.getSlot()]))
+			{
+				chatIconManager.updateChatIcon(badgeIcons[badge.getSlot()], TeamBadges.image(badge.getTag(), badge.getColour()));
+				badgePainted[badge.getSlot()] = painted;
+			}
+		}
+		badgePlayers = TeamBadges.players(view);
 	}
 
 	// ---- events, teams and news ----
@@ -530,14 +606,18 @@ public class AsgardiansPlugin extends Plugin
 				refreshPanel();
 			}
 		});
-		api.get(ApiClient.endpoint(address, "leaderboards"), key, ClanData.LeaderboardList.class, list ->
+		for (String period : ClanTabs.PERIODS)
 		{
-			if (list.ok() && account != null && account.getHash() == who.getHash())
-			{
-				leaderboards = ClanView.orEmpty(list.getBody().getBoards());
-				clientThread.invokeLater(this::refreshClanPanel);
-			}
-		});
+			api.get(ApiClient.endpoint(address, "leaderboards").newBuilder().addQueryParameter("period", period).build(), key,
+				ClanData.LeaderboardList.class, list ->
+				{
+					if (list.ok() && account != null && account.getHash() == who.getHash())
+					{
+						leaderboards.put(period, ClanView.orEmpty(list.getBody().getBoards()));
+						clientThread.invokeLater(this::refreshClanPanel);
+					}
+				});
+		}
 		ClanView previous = clanView;
 		clanFetcher.fetch(address, key, withBoards, previous, result ->
 		{
@@ -550,6 +630,7 @@ public class AsgardiansPlugin extends Plugin
 			clanView = result.getView();
 			clientThread.invokeLater(() ->
 			{
+				updateTeamBadges(result.getView());
 				notifyClanChanges(previous, result.getView(), address);
 				refreshClanPanel();
 			});
@@ -612,7 +693,25 @@ public class AsgardiansPlugin extends Plugin
 		{
 			chat(event.getName() + " has started." + (event.getCodeword() != null ? " Codeword: " + event.getCodeword() : ""));
 		}
-		for (String change : now.tileChanges(previous))
+		String ownRsn = account != null ? account.getRsn() : null;
+		long nowMillis = System.currentTimeMillis();
+		announcedDrops.values().removeIf(at -> nowMillis - at > ANNOUNCED_MILLIS);
+		Set<String> waiting = new java.util.HashSet<>();
+		for (Map.Entry<String, ClanData.Drop> choice : now.choices())
+		{
+			waiting.add(ClanTabs.dropBusyKey(choice.getValue()));
+		}
+		signupsBusy.removeIf(k -> k.startsWith("drop:") && !waiting.contains(k));
+		for (Map.Entry<String, ClanData.Drop> choice : now.choices())
+		{
+			if (choicesAnnounced.add(choice.getValue().getId()))
+			{
+				chat(choice.getKey() + ": " + (choice.getValue().getItem() != null ? choice.getValue().getItem() : "Your drop")
+					+ " fits " + choice.getValue().getOptions().size() + " tiles. Pick one under Requires action on the Events tab.");
+			}
+		}
+		for (String change : now.tileChanges(previous, (key, rsn) ->
+			(rsn == null || rsn.equalsIgnoreCase(ownRsn)) && announcedDrops.remove(key) != null))
 		{
 			chat(change);
 		}
@@ -691,7 +790,7 @@ public class AsgardiansPlugin extends Plugin
 		ClanTabs.Input input = new ClanTabs.Input(clanView, online, read != null ? parseLong(read) : 0, notConnected,
 			java.time.ZoneId.systemDefault(), java.time.Instant.now(), apiAddress(),
 			new java.util.HashMap<>(signupLists), new java.util.HashSet<>(signupsOpen), new java.util.HashSet<>(signupsBusy),
-			leaderboards);
+			new java.util.HashMap<>(leaderboards));
 		AsgardiansPanel target = panel;
 		if (target != null)
 		{
@@ -767,6 +866,40 @@ public class AsgardiansPlugin extends Plugin
 			loadSignups(event);
 		}
 		executor.execute(() -> refreshClan(false));
+	}
+
+	/** Swing thread: sends which tile a drop that fits several should count for, then reloads the board. */
+	private void chooseTile(ClanData.Event event, ClanData.Drop drop, ClanData.TileOption tile)
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		String busyKey = ClanTabs.dropBusyKey(drop);
+		if (key == null || !signupsBusy.add(busyKey))
+		{
+			return;
+		}
+		refreshClanPanel();
+		String item = drop.getItem() != null ? drop.getItem() : "Your drop";
+		String tileName = tile.getName() != null ? tile.getName() : "that tile";
+		api.chooseTile(address, key, event.getId(), drop.getId(), tile.getTileId(), result ->
+		{
+			if (result.getStatus() >= 200 && result.getStatus() < 300)
+			{
+				clientThread.invokeLater(() -> chat(event.getName() + ": " + item + " now counts towards \"" + tileName + "\"."));
+			}
+			else
+			{
+				signupsBusy.remove(busyKey);
+				String reason = result.getStatus() == 0 ? "Couldn't reach the clan website."
+					: result.getError() != null && !result.getError().isEmpty() ? result.getError()
+					: "The clan website said no (" + result.getStatus() + ").";
+				SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(panel, reason,
+					"Couldn't choose the tile", javax.swing.JOptionPane.WARNING_MESSAGE));
+			}
+			// After a success the buttons stay hidden until a reload no longer lists the drop as needing a choice.
+			executor.execute(() -> refreshClan(true));
+		});
 	}
 
 	private void toggleSignups(ClanData.Event event)
@@ -1497,7 +1630,8 @@ public class AsgardiansPlugin extends Plugin
 				// Records belong to the account that earned them; a switch drops anything still unsent.
 				queue.clear();
 				me = null;
-				leaderboards = List.of();
+				leaderboards.clear();
+				badgePlayers = Map.of();
 				pendingClog = null;
 				clogCapture.reset();
 			}
@@ -1663,6 +1797,12 @@ public class AsgardiansPlugin extends Plugin
 			{
 				queue.sent(batch);
 				setStatus("Connected as " + who.getRsn(), false);
+				announceDrops(batch);
+				if (hasWatchedItem(batch))
+				{
+					// A watched item probably counts for an event, so reload the boards soon to announce the submission.
+					executor.schedule(() -> refreshClan(true), WATCHED_REFRESH_SECONDS, TimeUnit.SECONDS);
+				}
 				if (queue.size() > 0)
 				{
 					executor.execute(this::flush);
@@ -1695,6 +1835,45 @@ public class AsgardiansPlugin extends Plugin
 				}
 			}
 		});
+	}
+
+	/** "<event>: Unicorn horn counts towards "3x Unicorn Horn". Drop submitted." for drops that count on the board. */
+	private void announceDrops(List<Record> batch)
+	{
+		if (!config.eventMessages())
+		{
+			return;
+		}
+		ClanView view = clanView;
+		List<String> lines = new ArrayList<>();
+		for (Record record : batch)
+		{
+			if (record.getType() != Record.Type.loot)
+			{
+				continue;
+			}
+			for (ClanView.DropMatch match : view.dropMatches(record.getItems()))
+			{
+				match.getKeys().forEach(k -> announcedDrops.put(k, System.currentTimeMillis()));
+				lines.add(match.getMessage());
+			}
+		}
+		if (!lines.isEmpty())
+		{
+			clientThread.invokeLater(() -> lines.forEach(this::chat));
+		}
+	}
+
+	private boolean hasWatchedItem(List<Record> batch)
+	{
+		for (Record record : batch)
+		{
+			if (settings.getScreenshots().watched(record))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private void fetchSettings()

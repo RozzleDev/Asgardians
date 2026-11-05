@@ -265,6 +265,137 @@ final class PanelParts
 		return row;
 	}
 
+	/**
+	 * A row (or grid) of solid buttons where one is picked, styled like the panel's tabs. Text that doesn't fit is cut
+	 * short; hover shows it all.
+	 */
+	static JPanel choice(java.util.List<String> labels, int selected, int columns, java.util.function.IntConsumer pick)
+	{
+		int cols = Math.max(1, Math.min(columns, labels.size()));
+		JPanel grid = new JPanel(new java.awt.GridLayout(0, cols, 4, 4));
+		grid.setOpaque(false);
+		for (int i = 0; i < labels.size(); i++)
+		{
+			int index = i;
+			boolean on = i == selected;
+			JLabel option = new JLabel(labels.get(i), javax.swing.SwingConstants.CENTER);
+			option.setFont(FontManager.getRunescapeSmallFont());
+			option.setOpaque(true);
+			option.setBackground(on ? HIGHLIGHT : ColorScheme.DARKER_GRAY_COLOR);
+			option.setForeground(on ? Color.WHITE : TEXT);
+			option.setBorder(new EmptyBorder(4, 3, 4, 3));
+			option.setToolTipText(labels.get(i));
+			option.setMinimumSize(new Dimension(0, option.getPreferredSize().height));
+			option.setPreferredSize(new Dimension(0, option.getPreferredSize().height));
+			option.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+			option.addMouseListener(new java.awt.event.MouseAdapter()
+			{
+				@Override
+				public void mousePressed(java.awt.event.MouseEvent e)
+				{
+					if (!on)
+					{
+						pick.accept(index);
+					}
+				}
+
+				@Override
+				public void mouseEntered(java.awt.event.MouseEvent e)
+				{
+					if (!on)
+					{
+						option.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+					}
+				}
+
+				@Override
+				public void mouseExited(java.awt.event.MouseEvent e)
+				{
+					option.setBackground(on ? HIGHLIGHT : ColorScheme.DARKER_GRAY_COLOR);
+				}
+			});
+			grid.add(option);
+		}
+		grid.setMaximumSize(new Dimension(Integer.MAX_VALUE, grid.getPreferredSize().height));
+		return grid;
+	}
+
+	/** A card heading with an arrow that folds the card away or opens it again, plus optional text on the right. */
+	static JPanel foldHeader(String title, boolean open, String right, Runnable toggle)
+	{
+		JPanel row = new JPanel(new BorderLayout(4, 0));
+		row.setOpaque(false);
+		JLabel heading = new JLabel("<html><div style='width:" + (right != null ? TEXT_WIDTH - 55 : TEXT_WIDTH - 14) + "px'>"
+			+ escape(title) + "</div></html>", new Arrow(open), JLabel.LEFT);
+		heading.setIconTextGap(6);
+		heading.setVerticalTextPosition(JLabel.TOP);
+		heading.setFont(FontManager.getRunescapeBoldFont());
+		heading.setForeground(Color.WHITE);
+		row.add(heading, BorderLayout.CENTER);
+		if (right != null)
+		{
+			row.add(plain(right, HIGHLIGHT), BorderLayout.EAST);
+		}
+		row.setToolTipText(open ? "Click to fold away" : "Click to open");
+		row.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+		row.addMouseListener(new java.awt.event.MouseAdapter()
+		{
+			@Override
+			public void mousePressed(java.awt.event.MouseEvent e)
+			{
+				toggle.run();
+			}
+
+			@Override
+			public void mouseEntered(java.awt.event.MouseEvent e)
+			{
+				heading.setForeground(HIGHLIGHT);
+			}
+
+			@Override
+			public void mouseExited(java.awt.event.MouseEvent e)
+			{
+				heading.setForeground(Color.WHITE);
+			}
+		});
+		return row;
+	}
+
+	/** A small triangle, pointing down when open and right when folded. Drawn, since the game fonts have no arrows. */
+	private static class Arrow implements javax.swing.Icon
+	{
+		private final boolean open;
+
+		Arrow(boolean open)
+		{
+			this.open = open;
+		}
+
+		@Override
+		public void paintIcon(Component c, java.awt.Graphics g, int x, int y)
+		{
+			java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
+			g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+			g2.setColor(QUIET);
+			int[] xs = open ? new int[]{x, x + 8, x + 4} : new int[]{x + 1, x + 7, x + 1};
+			int[] ys = open ? new int[]{y + 2, y + 2, y + 7} : new int[]{y, y + 4, y + 8};
+			g2.fillPolygon(xs, ys, 3);
+			g2.dispose();
+		}
+
+		@Override
+		public int getIconWidth()
+		{
+			return 8;
+		}
+
+		@Override
+		public int getIconHeight()
+		{
+			return 9;
+		}
+	}
+
 	static JButton button(String text, Runnable action)
 	{
 		JButton button = new JButton(text);
