@@ -21,7 +21,7 @@ public class AsgardiansPanelTest
 			{
 				saved.put(key, value);
 			}
-		}, () -> { }, () -> { }, () -> { }, ClanTabsTest.ACTIONS);
+		}, () -> { }, () -> { }, () -> { }, ClanTabsTest.ACTIONS, GroupsTest.actions(), StatsTabsTest.ACTIONS);
 	}
 
 	@Test
@@ -36,8 +36,11 @@ public class AsgardiansPanelTest
 	{
 		Map<String, String> saved = new HashMap<>();
 		saved.put("leaderboardPeriod", "week");
+		saved.put("statsPage", "trades");
+		saved.put("statsMinimum", "1b");
 		saved.put("foldedLeaderboards", "\n\nDeaths\n");
 		AsgardiansPanel panel = panel(saved);
 		panel.updateClan(ClanTabsTest.oddInput());
+		panel.updateStats(StatsTabsTest.input(StatsTabsTest.feed()));
 	}
 }

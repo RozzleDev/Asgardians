@@ -11,6 +11,8 @@ It records your drops, pets, collection log, deaths and personal bests for the c
 - **Events tab:** a **Current event** page that breaks the running event down by team, with who's online, each team's board, the standings, recent drops and drops waiting for you to pick a tile, and a **Schedule** page of bingo events, Boss of the Week, Skill of the Week and other clan events, with sign-ups.
 - **Event messages:** a chat message as soon as one of your drops counts towards a tile, then messages when any team in your event submits an item, has one accepted or completes a tile.
 - **Team badges** in clan chat during an event, in place of each participant's rank icon.
+- **Groups tab:** find or start a group for raids, bosses and other group content. Join with one click, see who's online, and get put in the group's RuneLite party. A chat message tells the clan when a group starts, and the group when it fills and which world to hop to.
+- **Stats tab:** the clan's latest drops (all, 1m+, 10m+ or 100m+), new collection log slots, pets and new PBs (each member's best time only), 25 of each, with who got them and when.
 - **Leaderboard tab:** the current Boss or Skill of the Week, plus clan credit, collection log, drops and deaths for this month, this year or all time. Each board folds away.
 - **News tab:** clan announcements. Unread ones are shown when you log in.
 - **Event codeword overlay** for events that use one.
@@ -18,7 +20,7 @@ It records your drops, pets, collection log, deaths and personal bests for the c
 
 ## Data sent
 
-The plugin sends your IP address, RSN, account hash and gameplay data (drops, pets, collection log, deaths and personal bests, with screenshots) to asgardiansclan.com, or to the server address set in the plugin's settings. This is a 3rd-party server not controlled or verified by the RuneLite developers. Gameplay data is only sent if your RSN is on the clan roster.
+The plugin sends your IP address, RSN, account hash, gameplay data (drops, pets, collection log, deaths and personal bests, with screenshots) and group finder activity (the groups you start or join, your world and kill count for that content) to asgardiansclan.com, or to the server address set in the plugin's settings. This is a 3rd-party server not controlled or verified by the RuneLite developers. Gameplay data is only sent if your RSN is on the clan roster.
 
 Private messages are hidden in screenshots.
 

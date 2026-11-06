@@ -290,6 +290,14 @@ class ApiClient
 	}
 
 	/** Withdraws the member from an event. */
+	/** A group finder action (create, join, leave, close, kick or check in). Every reply is the whole group list. */
+	void groups(String address, String installKey, String path, JsonObject body, Consumer<GetResult<ClanData.GroupList>> done)
+	{
+		send(new Request.Builder().url(endpoint(address, path))
+			.header(INSTALL_KEY_HEADER, installKey)
+			.post(RequestBody.create(JSON, gson.toJson(body))).build(), ClanData.GroupList.class, done);
+	}
+
 	/** Puts a drop that fits several tiles on the one the member picked. */
 	void chooseTile(String address, String installKey, String eventId, String dropId, String tileId,
 		Consumer<GetResult<ClanData.TileChoice>> done)

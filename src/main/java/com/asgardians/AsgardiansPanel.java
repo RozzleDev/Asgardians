@@ -38,7 +38,8 @@ import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.QuantityFormatter;
 
 /**
- * Side panel with four tabs. Status: connection, personal bests, collection log and recent submissions.
+ * Side panel with six tabs. Groups: find or start a group for group content. Stats: the clan's latest drops,
+ * collection log slots, PBs and pets. Status: connection, personal bests, collection log and recent submissions.
  * Events: the running event by team, and the schedule. Leaderboard: the current competition and this month's or
  * this year's boards. News: staff announcements. Swing thread only.
  */
@@ -77,6 +78,22 @@ class AsgardiansPanel extends PluginPanel
 	private final JPanel eventsTab = PanelParts.column();
 	private final JPanel leadersTab = PanelParts.column();
 	private final JPanel newsTab = PanelParts.column();
+	private final JPanel groupsTab = PanelParts.column();
+	private final JPanel statsTab = PanelParts.column();
+	private final StatsTabs.Actions statsActions;
+	private TabBar.Tab statsButton;
+	/** The panel is open on the Stats tab. Read off the Swing thread. */
+	private volatile boolean statsShown;
+	private StatsTabs.Input lastStats;
+	private String statsPage;
+	private String statsMinimum;
+	private final GroupTabs.GroupForm groupForm;
+	private final GroupTabs.Actions groupActions;
+	private TabBar.Tab groupsButton;
+	private TabBar tabBar;
+	/** The panel is open on the Groups tab, so the plugin checks groups more often. Read off the Swing thread. */
+	private volatile boolean groupsShown;
+	private boolean panelOpen;
 	private final TabBar.Tab newsButton;
 	private final Runnable syncPbs;
 	private final Runnable refreshClan;
@@ -102,13 +119,20 @@ class AsgardiansPanel extends PluginPanel
 
 	private static final String PERIOD_KEY = "leaderboardPeriod";
 	private static final String FOLDED_KEY = "foldedLeaderboards";
+	private static final String STATS_PAGE_KEY = "statsPage";
+	private static final String STATS_MINIMUM_KEY = "statsMinimum";
 
 	AsgardiansPanel(Settings settings, Runnable syncPbs, Runnable refreshClan, Runnable newsOpened,
-		ClanTabs.Actions eventActions)
+		ClanTabs.Actions eventActions, GroupTabs.Actions groupActions, StatsTabs.Actions statsActions)
 	{
+		this.statsActions = statsActions;
+		this.groupActions = groupActions;
+		this.groupForm = new GroupTabs.GroupForm(groupActions::create);
 		this.settings = settings;
 		String savedPeriod = settings.get(PERIOD_KEY);
 		period = ClanTabs.period(savedPeriod);
+		statsPage = StatsTabs.page(settings.get(STATS_PAGE_KEY));
+		statsMinimum = StatsTabs.minimum(settings.get(STATS_MINIMUM_KEY));
 		String savedFolded = settings.get(FOLDED_KEY);
 		if (savedFolded != null && !savedFolded.isEmpty())
 		{
@@ -135,11 +159,15 @@ class AsgardiansPanel extends PluginPanel
 		JPanel display = new JPanel(new BorderLayout());
 		display.setOpaque(false);
 		TabBar tabs = new TabBar(display);
+		tabBar = tabs;
 		tabs.setAlignmentX(LEFT_ALIGNMENT);
 		TabBar.Tab status = tabs.addTab("Status", statusTab, null);
 		tabs.addTab("Events", eventsTab, null);
+		groupsButton = tabs.addTab("Groups", groupsTab, groupActions::refresh);
 		tabs.addTab("Leaderboard", leadersTab, null);
+		statsButton = tabs.addTab("Stats", statsTab, statsActions::opened);
 		newsButton = tabs.addTab("News", newsTab, newsOpened);
+		tabs.onChange(this::updateGroupsShown);
 		tabs.select(status);
 		top.add(tabs);
 		top.add(Box.createVerticalStrut(8));
@@ -152,6 +180,123 @@ class AsgardiansPanel extends PluginPanel
 		updateClan(new ClanTabs.Input(ClanView.empty(), java.util.Map.of(), 0, "Log in to see clan events.",
 			java.time.ZoneId.systemDefault(), java.time.Instant.now(), AsgardiansConfig.DEFAULT_API_ADDRESS,
 			java.util.Map.of(), java.util.Set.of(), java.util.Set.of(), java.util.Map.of()));
+		updateStats(new StatsTabs.Input(null, false, "Log in to see clan stats.", null, null, java.time.Instant.now(),
+			java.time.ZoneId.systemDefault()));
+	}
+
+	/** Redraws the Stats tab. */
+	void updateStats(StatsTabs.Input input)
+	{
+		lastStats = input;
+		StatsTabs.Ui ui = new StatsTabs.Ui(statsPage, statsMinimum);
+		keepingScroll(statsTab, () -> StatsTabs.draw(statsTab, input, ui, statsUi, statsActions));
+	}
+
+	/** The Stats tab's page and drop value buttons. */
+	private final StatsTabs.UiActions statsUi = new StatsTabs.UiActions()
+	{
+		@Override
+		public void page(String page)
+		{
+			statsPage = page;
+			settings.set(STATS_PAGE_KEY, page);
+			redrawStats();
+		}
+
+		@Override
+		public void minimum(String minimum)
+		{
+			statsMinimum = minimum;
+			settings.set(STATS_MINIMUM_KEY, minimum);
+			redrawStats();
+		}
+	};
+
+	private void redrawStats()
+	{
+		if (lastStats != null)
+		{
+			updateStats(lastStats);
+		}
+	}
+
+	/** True while the side panel is open on the Stats tab. Safe from any thread. */
+	boolean statsShown()
+	{
+		return statsShown;
+	}
+
+	/** Redraws the Groups tab. */
+	void updateGroups(GroupTabs.Input input)
+	{
+		// The list is checked every few seconds. Redrawing takes the member's cursor out of the form and closes its
+		// drop-downs, so only redraw when something shown has changed, and never while a drop-down is open.
+		Object key = GroupTabs.redrawKey(input);
+		if (key.equals(lastGroupsKey) || groupForm.isPicking())
+		{
+			return;
+		}
+		lastGroupsKey = key;
+		java.awt.Component focus = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+		boolean typing = focus != null && javax.swing.SwingUtilities.isDescendingFrom(focus, groupForm);
+		keepingScroll(groupsTab, () -> GroupTabs.draw(groupsTab, input, groupForm, groupActions));
+		if (typing && javax.swing.SwingUtilities.isDescendingFrom(focus, groupsTab))
+		{
+			javax.swing.SwingUtilities.invokeLater(focus::requestFocusInWindow);
+		}
+	}
+
+	private Object lastGroupsKey;
+
+	/** Redraws a tab without jumping back to the top of the side panel. */
+	private void keepingScroll(JPanel tab, Runnable redraw)
+	{
+		javax.swing.JViewport viewport = (javax.swing.JViewport) javax.swing.SwingUtilities.getAncestorOfClass(javax.swing.JViewport.class, tab);
+		java.awt.Point at = viewport != null ? viewport.getViewPosition() : null;
+		redraw.run();
+		tab.revalidate();
+		tab.repaint();
+		if (viewport != null)
+		{
+			javax.swing.SwingUtilities.invokeLater(() ->
+			{
+				java.awt.Component view = viewport.getView();
+				int maxY = view != null ? Math.max(0, view.getHeight() - viewport.getExtentSize().height) : 0;
+				viewport.setViewPosition(new java.awt.Point(at.x, Math.min(at.y, maxY)));
+			});
+		}
+	}
+
+	/** Clears the "Start a group" note once a group has started. */
+	void groupStarted()
+	{
+		groupForm.reset();
+	}
+
+	/** True while the side panel is open on the Groups tab. Safe from any thread. */
+	boolean groupsShown()
+	{
+		return groupsShown;
+	}
+
+	@Override
+	public void onActivate()
+	{
+		panelOpen = true;
+		updateGroupsShown();
+	}
+
+	@Override
+	public void onDeactivate()
+	{
+		panelOpen = false;
+		updateGroupsShown();
+	}
+
+	private void updateGroupsShown()
+	{
+		groupsShown = panelOpen && tabBar != null && groupsButton != null && tabBar.isSelected(groupsButton);
+		statsShown = panelOpen && tabBar != null && statsButton != null && tabBar.isSelected(statsButton);
 	}
 
 	/** Redraws the Status tab. */
@@ -177,9 +322,9 @@ class AsgardiansPanel extends PluginPanel
 	{
 		lastInput = input;
 		ClanTabs.Ui ui = new ClanTabs.Ui(eventsPage, eventId, new HashMap<>(teams), period, new LinkedHashSet<>(folded));
-		ClanTabs.events(eventsTab, input, refreshClan, eventActions, ui, uiActions);
-		ClanTabs.leaderboards(leadersTab, input, refreshClan, ui, uiActions);
-		ClanTabs.news(newsTab, input, refreshClan);
+		keepingScroll(eventsTab, () -> ClanTabs.events(eventsTab, input, refreshClan, eventActions, ui, uiActions));
+		keepingScroll(leadersTab, () -> ClanTabs.leaderboards(leadersTab, input, refreshClan, ui, uiActions));
+		keepingScroll(newsTab, () -> ClanTabs.news(newsTab, input, refreshClan));
 		int unread = input.getNotConnected() == null ? input.getView().unread(input.getLastReadAnnouncementId()) : 0;
 		newsButton.setText(unread > 0 ? "News (" + unread + ")" : "News");
 		eventsTab.revalidate();

@@ -404,6 +404,133 @@ final class ClanData
 		private String tileId;
 	}
 
+	// ---- Groups (group finder) ----
+
+	/** GET /plugin/groups/activities: what groups can be started for. */
+	@Data
+	static class GroupActivityList
+	{
+		private List<GroupActivity> activities;
+	}
+
+	@Data
+	static class GroupActivity
+	{
+		private String id;
+		private String name;
+		/** Optional modes, e.g. "Normal" and "Hard mode". */
+		private List<String> modes;
+		private Integer minSize;
+		private Integer maxSize;
+		private Integer defaultSize;
+		/** Offers 8+ even when maxSize is 8 or less (Nex, God Wars, Corp). */
+		private boolean mass;
+		/** Whether Split or FFA can be picked. */
+		private boolean loot;
+		/** RuneLite's kill count name for this content, e.g. "theatre of blood", so the member's KC can be shown. */
+		private String kcName;
+	}
+
+	/** GET /plugin/groups, POST /plugin/groups/checkin, and the reply to every group action. */
+	@Data
+	static class GroupList
+	{
+		private List<Group> groups;
+		/** The ID of the group this member is in, or null. */
+		private String mine;
+		/** Why this member is no longer in a group, once: away, kicked, closed or removed. */
+		private String reason;
+
+		Group mineGroup()
+		{
+			return find(mine);
+		}
+
+		Group find(String id)
+		{
+			if (id == null || groups == null)
+			{
+				return null;
+			}
+			for (Group g : groups)
+			{
+				if (id.equals(g.getId()))
+				{
+					return g;
+				}
+			}
+			return null;
+		}
+	}
+
+	@Data
+	static class Group
+	{
+		private String id;
+		private String activity;
+		/** Display name, e.g. "Theatre of Blood". */
+		private String name;
+		private String mode;
+		/** Seats; null for 8+ (with mass) or Any (without). */
+		private Integer size;
+		private boolean mass;
+		/** split or ffa; null when the activity has no choice. */
+		private String loot;
+		private String note;
+		private Integer world;
+		/** RSN of the host. */
+		private String host;
+		private List<GroupMember> members;
+		/** The RuneLite party passphrase. Only sent to members. */
+		private String party;
+		/** True when this member may close the group: its host, or a clan moderator. */
+		private Boolean canClose;
+		private String createdAt;
+
+		/** "Theatre of Blood (Hard mode)". */
+		String getTitle()
+		{
+			String base = name != null ? name : activity != null ? activity : "Group";
+			return mode != null && !mode.trim().isEmpty() ? base + " (" + mode + ")" : base;
+		}
+
+		int count()
+		{
+			return members != null ? members.size() : 0;
+		}
+
+		boolean isFull()
+		{
+			return !mass && size != null && count() >= size;
+		}
+
+		/** "3/5", "3/8+" for a group of more than eight, or "3/any" when the host has no preference. */
+		String seats()
+		{
+			return mass ? count() + "/8+" : size == null ? count() + "/any" : count() + "/" + size;
+		}
+
+		boolean has(String rsn)
+		{
+			for (GroupMember m : members != null ? members : List.<GroupMember>of())
+			{
+				if (m != null && DropRecorder.sameRsn(m.getRsn(), rsn))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+	}
+
+	@Data
+	static class GroupMember
+	{
+		private String rsn;
+		/** Their kill count for the group's content, when their plugin knows it. */
+		private Integer kc;
+	}
+
 	/** One item a tile asks for, and how many of it are accepted. */
 	@Data
 	static class TileNeed
@@ -442,6 +569,63 @@ final class ClanData
 		Instant posted()
 		{
 			return parse(postedAt);
+		}
+	}
+
+	/**
+	 * GET /plugin/stats/recent: the clan's latest drops, new collection log slots, live PBs and pets, newest first and
+	 * at most 25 in each list. A list the website doesn't send is null.
+	 */
+	@Data
+	static class StatsFeed
+	{
+		/** Every drop. */
+		private List<StatEntry> drops;
+		/** Drops worth 1m or more. */
+		private List<StatEntry> drops1m;
+		/** Drops worth 10m or more. */
+		private List<StatEntry> drops10m;
+		/** Drops worth 100m or more. */
+		private List<StatEntry> drops100m;
+		/** New collection log slots, as they're obtained (not log syncs). */
+		private List<StatEntry> clogs;
+		/** New PBs set in game (not chat commands or syncs). */
+		private List<StatEntry> pbs;
+		private List<StatEntry> pets;
+
+		/** True when the website sent at least one list, so it knows about clan stats. */
+		boolean known()
+		{
+			return drops != null || drops1m != null || drops10m != null || drops100m != null || clogs != null || pbs != null || pets != null;
+		}
+	}
+
+	/** One line of a clan stats list. Drops, clogs and pets use the item fields; PBs use boss, teamSize and seconds. */
+	@Data
+	static class StatEntry
+	{
+		private String id;
+		private String rsn;
+		/** Item or pet name. */
+		private String item;
+		private Integer itemId;
+		private Integer quantity;
+		/** Total GE value in coins. */
+		private Long value;
+		/** What it came from: "Vorkath", "Chambers of Xeric". */
+		private String source;
+		private Integer kc;
+		/** PBs: the boss, "1" for solo or the team size ("3", "11-15"), and the time in seconds. */
+		private String boss;
+		private String teamSize;
+		private Double seconds;
+		/** Pets: already owned (a duplicate). */
+		private Boolean duplicate;
+		private String at;
+
+		Instant time()
+		{
+			return parse(at);
 		}
 	}
 

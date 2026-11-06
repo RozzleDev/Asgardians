@@ -123,6 +123,25 @@ public class AsgardiansPlugin extends Plugin
 	private ItemManager itemManager;
 
 	@Inject
+	private net.runelite.client.game.SpriteManager spriteManager;
+
+	/** RuneLite's hiscore bosses, by name, for the Stats tab's PB icons. */
+	private static final Map<String, net.runelite.client.hiscore.HiscoreSkill> HISCORE_BOSSES = hiscoreBosses();
+
+	private static Map<String, net.runelite.client.hiscore.HiscoreSkill> hiscoreBosses()
+	{
+		Map<String, net.runelite.client.hiscore.HiscoreSkill> byName = new java.util.LinkedHashMap<>();
+		for (net.runelite.client.hiscore.HiscoreSkill skill : net.runelite.client.hiscore.HiscoreSkill.values())
+		{
+			if (skill.getType() == net.runelite.client.hiscore.HiscoreSkillType.BOSS && skill.getName() != null)
+			{
+				byName.put(skill.getName(), skill);
+			}
+		}
+		return byName;
+	}
+
+	@Inject
 	private OkHttpClient okHttpClient;
 
 	@Inject
@@ -162,6 +181,31 @@ public class AsgardiansPlugin extends Plugin
 	@Inject
 	private ChatIconManager chatIconManager;
 
+	@Inject
+	private net.runelite.client.party.PartyService partyService;
+
+	// ---- group finder ----
+	private static final long GROUP_IN_GROUP_MILLIS = TimeUnit.SECONDS.toMillis(10);
+	private static final long GROUP_ALERT_MILLIS = TimeUnit.SECONDS.toMillis(20);
+	private static final long GROUP_IDLE_MILLIS = TimeUnit.MINUTES.toMillis(2);
+	private static final long GROUP_UNSUPPORTED_MILLIS = TimeUnit.MINUTES.toMillis(5);
+	private static final long GROUP_ACTIVITIES_MILLIS = TimeUnit.MINUTES.toMillis(30);
+	private final Object groupLock = new Object();
+	private volatile ClanData.GroupList groups;
+	private volatile List<ClanData.GroupActivity> groupActivities = List.of();
+	private volatile boolean groupsUnsupported;
+	private volatile boolean groupBusy;
+	private volatile java.time.Instant groupsFetchedAt;
+	/** A group the member just left or closed, so the chat line says so rather than "you were removed". */
+	private volatile String leftGroupOnPurpose;
+	/** The group whose RuneLite party the plugin put the member in, and its passphrase. */
+	private volatile String partyGroup;
+	private volatile String partyPassphrase;
+	private volatile long lastGroupsPoll;
+	private volatile long lastActivitiesFetch;
+	private final AtomicBoolean groupsPolling = new AtomicBoolean();
+	private ScheduledFuture<?> groupTask;
+
 	private ClanFetcher clanFetcher;
 	private CodewordOverlay codewordOverlay;
 	private volatile ClanView clanView = ClanView.empty();
@@ -182,6 +226,14 @@ public class AsgardiansPlugin extends Plugin
 	/** Event IDs already reminded about this session. */
 	private final Set<String> reminded = java.util.concurrent.ConcurrentHashMap.newKeySet();
 	private ScheduledFuture<?> clanTask;
+	/** The Stats tab's lists; null until loaded. */
+	private volatile ClanData.StatsFeed stats;
+	/** The website doesn't have clan stats yet. */
+	private volatile boolean statsUnsupported;
+	private volatile String statsError;
+	private volatile java.time.Instant statsFetchedAt;
+	private volatile long lastStatsFetch;
+	private final AtomicBoolean fetchingStats = new AtomicBoolean();
 	/** Sign-up lists loaded so far, events whose list is open, and events with a request in flight. */
 	private final Map<String, ClanData.SignupList> signupLists = new java.util.concurrent.ConcurrentHashMap<>();
 	private final Set<String> signupsOpen = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -347,7 +399,7 @@ public class AsgardiansPlugin extends Plugin
 				{
 					AsgardiansPlugin.this.chooseTile(event, drop, tile);
 				}
-			});
+			}, groupActions(), statsActions());
 		navButton = NavigationButton.builder()
 			.tooltip("Asgardians Clan")
 			.icon(AsgIcon.create(16))
@@ -360,6 +412,7 @@ public class AsgardiansPlugin extends Plugin
 		settingsTask = executor.scheduleWithFixedDelay(this::fetchSettings, 0, SETTINGS_MINUTES, TimeUnit.MINUTES);
 		pbTask = executor.scheduleWithFixedDelay(this::pbSyncTick, 5, 2, TimeUnit.SECONDS);
 		clanTask = executor.scheduleWithFixedDelay(this::clanTick, 5, 30, TimeUnit.SECONDS);
+		groupTask = executor.scheduleWithFixedDelay(this::groupTick, 6, 5, TimeUnit.SECONDS);
 		clientThread.invokeLater(this::onAccountState);
 		log.info("Asgardians Clan started, API address {}", apiAddress());
 	}
@@ -368,7 +421,7 @@ public class AsgardiansPlugin extends Plugin
 	protected void shutDown()
 	{
 		// Null checks: RuneLite also calls this after a start that failed part way.
-		for (java.util.concurrent.Future<?> task : new java.util.concurrent.Future<?>[]{flushTask, settingsTask, pbTask, clanTask})
+		for (java.util.concurrent.Future<?> task : new java.util.concurrent.Future<?>[]{flushTask, settingsTask, pbTask, clanTask, groupTask})
 		{
 			if (task != null)
 			{
@@ -579,10 +632,16 @@ public class AsgardiansPlugin extends Plugin
 		{
 			refreshClan(true);
 		}
+		AsgardiansPanel shown = panel;
+		if (shown != null && shown.statsShown() && now - lastStatsFetch >= STATS_SHOWN_MILLIS)
+		{
+			fetchStats();
+		}
 		clientThread.invokeLater(() ->
 		{
 			sendReminders();
 			refreshClanPanel();
+			refreshGroupsPanel();
 		});
 	}
 
@@ -766,15 +825,7 @@ public class AsgardiansPlugin extends Plugin
 			clientThread.invokeLater(this::refreshClanPanel);
 			return;
 		}
-		Map<String, Integer> online = new java.util.HashMap<>();
-		net.runelite.api.clan.ClanChannel channel = client.getClanChannel();
-		if (channel != null)
-		{
-			for (net.runelite.api.clan.ClanChannelMember member : channel.getMembers())
-			{
-				online.put(Text.sanitize(member.getName()).toLowerCase(java.util.Locale.UK), member.getWorld());
-			}
-		}
+		Map<String, Integer> online = onlineMembers();
 		ApiClient.AccountInfo who = account;
 		String notConnected = null;
 		if (who == null || client.getGameState() != GameState.LOGGED_IN)
@@ -804,11 +855,468 @@ public class AsgardiansPlugin extends Plugin
 			java.time.ZoneId.systemDefault(), java.time.Instant.now(), apiAddress(),
 			new java.util.HashMap<>(signupLists), new java.util.HashSet<>(signupsOpen), new java.util.HashSet<>(signupsBusy),
 			new java.util.HashMap<>(leaderboards));
+		StatsTabs.Input statsInput = new StatsTabs.Input(stats, statsUnsupported,
+			notConnected == null ? null : who == null || client.getGameState() != GameState.LOGGED_IN
+				? "Log in to see clan stats." : !sharing
+				? "Clan stats load once you're in the Asgardians clan with \"Share my data with Asgardians\" ticked."
+				: "Connecting…",
+			statsError, statsFetchedAt, java.time.Instant.now(), java.time.ZoneId.systemDefault());
 		AsgardiansPanel target = panel;
 		if (target != null)
 		{
-			SwingUtilities.invokeLater(() -> target.updateClan(input));
+			SwingUtilities.invokeLater(() ->
+			{
+				target.updateClan(input);
+				target.updateStats(statsInput);
+			});
 		}
+	}
+
+	/** Online clan members: lowercase RSN to world. Client thread. */
+	private Map<String, Integer> onlineMembers()
+	{
+		Map<String, Integer> online = new java.util.HashMap<>();
+		net.runelite.api.clan.ClanChannel channel = client.getClanChannel();
+		if (channel != null)
+		{
+			for (net.runelite.api.clan.ClanChannelMember member : channel.getMembers())
+			{
+				online.put(Text.sanitize(member.getName()).toLowerCase(java.util.Locale.UK), member.getWorld());
+			}
+		}
+		return online;
+	}
+
+	// ---- group finder ----
+
+	/**
+	 * Every 5 seconds: checks in while the member is in a group (so the website knows they're still there), and
+	 * otherwise loads the open groups, more often while the Groups tab is open or new groups are announced in chat.
+	 */
+	private void groupTick()
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		GameState state = client.getGameState();
+		boolean playing = state == GameState.LOGGED_IN || state == GameState.HOPPING || state == GameState.LOADING;
+		if (key == null || !sharing || !playing)
+		{
+			return;
+		}
+		ClanData.GroupList list = groups;
+		boolean inGroup = list != null && list.getMine() != null;
+		AsgardiansPanel shown = panel;
+		long every = groupsUnsupported ? GROUP_UNSUPPORTED_MILLIS
+			: inGroup || (shown != null && shown.groupsShown()) ? GROUP_IN_GROUP_MILLIS
+			: config.groupAlerts() ? GROUP_ALERT_MILLIS : GROUP_IDLE_MILLIS;
+		long now = System.currentTimeMillis();
+		if (now - lastGroupsPoll < every || !groupsPolling.compareAndSet(false, true))
+		{
+			return;
+		}
+		lastGroupsPoll = now;
+		if (!groupsUnsupported && (groupActivities.isEmpty() || now - lastActivitiesFetch > GROUP_ACTIVITIES_MILLIS))
+		{
+			lastActivitiesFetch = now;
+			api.get(ApiClient.endpoint(address, "groups/activities"), key, ClanData.GroupActivityList.class, r ->
+			{
+				if (r.ok() && r.getBody().getActivities() != null && account == who)
+				{
+					groupActivities = r.getBody().getActivities();
+					refreshGroupsPanel();
+				}
+			});
+		}
+		java.util.function.Consumer<ApiClient.GetResult<ClanData.GroupList>> done = r ->
+		{
+			groupsPolling.set(false);
+			if (account != who)
+			{
+				return;
+			}
+			if (r.ok())
+			{
+				groupsUnsupported = false;
+				applyGroups(r.getBody());
+			}
+			else if (r.getStatus() == 404 || (r.getStatus() >= 200 && r.getStatus() < 300))
+			{
+				// No groups on this website yet (a 404, or its web page instead of JSON).
+				groupsUnsupported = true;
+				refreshGroupsPanel();
+			}
+		};
+		if (inGroup)
+		{
+			com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+			body.addProperty("world", client.getWorld());
+			api.groups(address, key, "groups/checkin", body, done);
+		}
+		else
+		{
+			api.get(ApiClient.endpoint(address, "groups"), key, ClanData.GroupList.class, done);
+		}
+	}
+
+	/** A new group list from the website: chat lines for what changed, the RuneLite party, and a redraw. */
+	private void applyGroups(ClanData.GroupList now)
+	{
+		ApiClient.AccountInfo who = account;
+		String me = who != null ? who.getRsn() : null;
+		List<String> lines;
+		List<String> started;
+		ClanData.GroupList before;
+		synchronized (groupLock)
+		{
+			before = groups;
+			groups = now;
+			groupsFetchedAt = java.time.Instant.now();
+			lines = Groups.changes(before, now, me, leftGroupOnPurpose);
+			started = config.groupAlerts() ? Groups.started(before, now, me) : List.of();
+			if (before != null && before.getMine() != null && !before.getMine().equals(now.getMine()))
+			{
+				leftGroupOnPurpose = null;
+			}
+		}
+		updateParty(now);
+		if (!lines.isEmpty() || !started.isEmpty())
+		{
+			clientThread.invokeLater(() ->
+			{
+				if (client.getGameState() == GameState.LOGGED_IN)
+				{
+					lines.forEach(this::chat);
+					started.forEach(this::chat);
+				}
+			});
+		}
+		refreshGroupsPanel();
+	}
+
+	/** Puts the member in their group's RuneLite party once, and takes them out of it when they leave the group. */
+	private void updateParty(ClanData.GroupList now)
+	{
+		ClanData.Group mine = now.mineGroup();
+		String pass = mine != null && mine.getParty() != null ? mine.getParty().trim() : "";
+		if (mine != null && !pass.isEmpty() && config.groupParty() && !mine.getId().equals(partyGroup))
+		{
+			joinParty(mine.getId(), pass);
+		}
+		else if (mine == null && partyPassphrase != null)
+		{
+			String left = partyPassphrase;
+			partyGroup = null;
+			partyPassphrase = null;
+			SwingUtilities.invokeLater(() ->
+			{
+				// Only if they're still in the group's party, not one they've since moved to.
+				if (left.equals(partyService.getPartyPassphrase()))
+				{
+					partyService.changeParty(null);
+				}
+			});
+		}
+	}
+
+	private void joinParty(String groupId, String pass)
+	{
+		partyGroup = groupId;
+		partyPassphrase = pass;
+		SwingUtilities.invokeLater(() ->
+		{
+			try
+			{
+				if (!pass.equals(partyService.getPartyPassphrase()))
+				{
+					partyService.changeParty(pass);
+				}
+			}
+			catch (RuntimeException e)
+			{
+				log.debug("Asgardians couldn't join the group's party: {}", e.getMessage());
+			}
+			refreshGroupsPanel();
+		});
+	}
+
+	/** Safe from any thread: redraws the Groups tab from the last list. */
+	private void refreshGroupsPanel()
+	{
+		if (!client.isClientThread())
+		{
+			clientThread.invokeLater(this::refreshGroupsPanel);
+			return;
+		}
+		AsgardiansPanel target = panel;
+		if (target == null)
+		{
+			return;
+		}
+		ApiClient.AccountInfo who = account;
+		String notConnected = null;
+		if (who == null || client.getGameState() != GameState.LOGGED_IN)
+		{
+			notConnected = "Log in to find or start a group.";
+		}
+		else if (!sharing)
+		{
+			notConnected = "Groups load once you're in the Asgardians clan with \"Share my data with Asgardians\" ticked.";
+		}
+		ClanData.GroupList list = groups;
+		ClanData.Group mine = list != null ? list.mineGroup() : null;
+		String pass = partyService.getPartyPassphrase();
+		boolean inParty = mine != null && mine.getParty() != null && partyService.isInParty() && mine.getParty().trim().equals(pass);
+		GroupTabs.Input input = new GroupTabs.Input(list, groupActivities, groupsUnsupported, notConnected,
+			who != null ? who.getRsn() : null, onlineMembers(), inParty, groupBusy, groupsFetchedAt, java.time.ZoneId.systemDefault());
+		SwingUtilities.invokeLater(() -> target.updateGroups(input));
+	}
+
+	/** The member's kill count for an activity, from RuneLite's own records, or null. */
+	private Integer groupKc(String activityId)
+	{
+		for (ClanData.GroupActivity a : groupActivities)
+		{
+			if (a.getId() != null && a.getId().equals(activityId) && a.getKcName() != null)
+			{
+				return configManager.getRSProfileConfiguration(PersonalBest.KC_CONFIG_GROUP,
+					a.getKcName().toLowerCase(java.util.Locale.UK), Integer.class);
+			}
+		}
+		return null;
+	}
+
+	/** What the Stats tab asks of the plugin. */
+	private StatsTabs.Actions statsActions()
+	{
+		return new StatsTabs.Actions()
+		{
+			@Override
+			public void refresh()
+			{
+				executor.execute(AsgardiansPlugin.this::fetchStats);
+			}
+
+			@Override
+			public void opened()
+			{
+				if (System.currentTimeMillis() - lastStatsFetch >= STATS_OPENED_MILLIS)
+				{
+					executor.execute(AsgardiansPlugin.this::fetchStats);
+				}
+			}
+
+			@Override
+			public void icon(javax.swing.JLabel label, int itemId, int quantity)
+			{
+				itemManager.getImage(itemId, quantity, quantity > 1).addTo(label);
+			}
+
+			@Override
+			public void bossIcon(javax.swing.JLabel label, String boss)
+			{
+				String name = StatsTabs.hiscoreName(boss, HISCORE_BOSSES.keySet());
+				if (name == null)
+				{
+					return;
+				}
+				// Drawn as RuneLite's Hiscore panel draws them.
+				spriteManager.getSpriteAsync(HISCORE_BOSSES.get(name).getSpriteId(), 0, sprite ->
+					SwingUtilities.invokeLater(() -> label.setIcon(new javax.swing.ImageIcon(
+						net.runelite.client.util.ImageUtil.resizeImage(
+							net.runelite.client.util.ImageUtil.resizeCanvas(sprite, 25, 25), 20, 20)))));
+			}
+		};
+	}
+
+	/** Reloads the Stats tab when it was opened a while after the last load. */
+	private static final long STATS_OPENED_MILLIS = 30_000;
+	/** While the Stats tab is open, its lists reload this often. */
+	private static final long STATS_SHOWN_MILLIS = 60_000;
+
+	/** Loads the clan's latest drops, clogs, PBs and pets. Executor thread. */
+	private void fetchStats()
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (key == null || !sharing || !fetchingStats.compareAndSet(false, true))
+		{
+			return;
+		}
+		lastStatsFetch = System.currentTimeMillis();
+		api.get(ApiClient.endpoint(address, "stats/recent"), key, ClanData.StatsFeed.class, result ->
+		{
+			fetchingStats.set(false);
+			if (account == null || account.getHash() != who.getHash())
+			{
+				return;
+			}
+			if (result.ok() && result.getBody().known())
+			{
+				stats = result.getBody();
+				statsUnsupported = false;
+				statsError = null;
+				statsFetchedAt = java.time.Instant.now();
+			}
+			else if (result.getStatus() == 404 || (result.getStatus() >= 200 && result.getStatus() < 300))
+			{
+				// No such path: a JSON 404, the website's own page (status 200), or a reply without any list.
+				statsUnsupported = true;
+				statsError = null;
+				statsFetchedAt = java.time.Instant.now();
+			}
+			else
+			{
+				statsError = result.getStatus() == 0 ? "Can't reach the clan website." : "Couldn't load clan stats"
+					+ (result.getError() != null ? ": " + result.getError() : ".");
+			}
+			refreshClanPanel();
+		});
+	}
+
+	private GroupTabs.Actions groupActions()
+	{
+		return new GroupTabs.Actions()
+		{
+			@Override
+			public void create(GroupTabs.GroupForm.Values v)
+			{
+				com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+				body.addProperty("activity", v.getActivity().getId());
+				body.addProperty("mode", v.getMode());
+				body.addProperty("size", v.getSize());
+				body.addProperty("mass", v.isMass());
+				body.addProperty("loot", v.getLoot());
+				body.addProperty("note", v.getNote());
+				body.addProperty("world", client.getWorld());
+				body.addProperty("kc", groupKc(v.getActivity().getId()));
+				// The website names the group's RuneLite party (ASG1, ASG2…); every member's plugin then joins it.
+				groupAction("groups", body, "Couldn't start the group", () ->
+				{
+					AsgardiansPanel target = panel;
+					if (target != null)
+					{
+						target.groupStarted();
+					}
+				});
+			}
+
+			@Override
+			public void join(ClanData.Group group)
+			{
+				ClanData.GroupList list = groups;
+				if (list != null && list.getMine() != null)
+				{
+					leftGroupOnPurpose = list.getMine();
+				}
+				com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+				body.addProperty("world", client.getWorld());
+				body.addProperty("kc", groupKc(group.getActivity()));
+				groupAction("groups/" + group.getId() + "/join", body, "Couldn't join the group", null);
+			}
+
+			@Override
+			public void leave(ClanData.Group group)
+			{
+				leftGroupOnPurpose = group.getId();
+				groupAction("groups/" + group.getId() + "/leave", new com.google.gson.JsonObject(), "Couldn't leave the group", null);
+			}
+
+			@Override
+			public void close(ClanData.Group group)
+			{
+				ClanData.GroupList list = groups;
+				int choice = javax.swing.JOptionPane.showConfirmDialog(panel, "Close the " + group.getTitle() + " group for everyone in it?",
+					"Close group", javax.swing.JOptionPane.YES_NO_OPTION);
+				if (choice != javax.swing.JOptionPane.YES_OPTION)
+				{
+					return;
+				}
+				if (list != null && group.getId().equals(list.getMine()))
+				{
+					leftGroupOnPurpose = group.getId();
+				}
+				groupAction("groups/" + group.getId() + "/close", new com.google.gson.JsonObject(), "Couldn't close the group", null);
+			}
+
+			@Override
+			public void kick(ClanData.Group group, String rsn)
+			{
+				int choice = javax.swing.JOptionPane.showConfirmDialog(panel, "Remove " + rsn + " from the group?",
+					"Kick", javax.swing.JOptionPane.YES_NO_OPTION);
+				if (choice != javax.swing.JOptionPane.YES_OPTION)
+				{
+					return;
+				}
+				com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+				body.addProperty("rsn", rsn);
+				groupAction("groups/" + group.getId() + "/kick", body, "Couldn't remove " + rsn, null);
+			}
+
+			@Override
+			public void joinParty(ClanData.Group group)
+			{
+				if (group.getParty() != null && !group.getParty().trim().isEmpty())
+				{
+					AsgardiansPlugin.this.joinParty(group.getId(), group.getParty().trim());
+				}
+			}
+
+			@Override
+			public void refresh()
+			{
+				lastGroupsPoll = 0;
+				executor.execute(AsgardiansPlugin.this::groupTick);
+				refreshGroupsPanel();
+			}
+		};
+	}
+
+	/** Sends a group action; the reply is the new group list. Errors are shown in a dialog. */
+	private void groupAction(String path, com.google.gson.JsonObject body, String failTitle, Runnable onSuccess)
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (key == null || groupBusy)
+		{
+			return;
+		}
+		groupBusy = true;
+		refreshGroupsPanel();
+		api.groups(address, key, path, body, result ->
+		{
+			groupBusy = false;
+			if (result.getStatus() >= 200 && result.getStatus() < 300)
+			{
+				if (result.getBody() != null && result.getBody().getGroups() != null)
+				{
+					applyGroups(result.getBody());
+				}
+				else
+				{
+					lastGroupsPoll = 0;
+					executor.execute(this::groupTick);
+				}
+				if (onSuccess != null)
+				{
+					SwingUtilities.invokeLater(onSuccess);
+				}
+			}
+			else
+			{
+				leftGroupOnPurpose = null;
+				String reason = result.getStatus() == 0 ? "Couldn't reach the clan website."
+					: result.getStatus() == 404 ? "The clan website doesn't have groups yet, or that group has gone."
+					: result.getError() != null && !result.getError().isEmpty() ? result.getError()
+					: "The clan website said no (" + result.getStatus() + ").";
+				SwingUtilities.invokeLater(() -> javax.swing.JOptionPane.showMessageDialog(panel, reason, failTitle,
+					javax.swing.JOptionPane.WARNING_MESSAGE));
+				lastGroupsPoll = 0;
+			}
+			refreshGroupsPanel();
+		});
 	}
 
 	// ---- sign-ups (buttons call these on the Swing thread) ----
@@ -1644,6 +2152,15 @@ public class AsgardiansPlugin extends Plugin
 				queue.clear();
 				me = null;
 				leaderboards.clear();
+				stats = null;
+				statsUnsupported = false;
+				statsError = null;
+				statsFetchedAt = null;
+				lastStatsFetch = 0;
+				groups = null;
+				groupActivities = List.of();
+				lastGroupsPoll = 0;
+				lastActivitiesFetch = 0;
 				badgePlayers = Map.of();
 				pendingClog = null;
 				clogCapture.reset();
