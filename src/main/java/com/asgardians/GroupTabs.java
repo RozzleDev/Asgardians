@@ -109,7 +109,22 @@ final class GroupTabs
 
 	static void draw(JPanel column, Input in, GroupForm form, Actions actions)
 	{
-		column.removeAll();
+		ClanData.GroupList shown = in.getNotConnected() == null && !in.isUnsupported() ? in.getGroups() : null;
+		boolean formShown = shown != null && shown.mineGroup() == null;
+		Card formCard = form.card();
+		if (formShown && column.getComponentCount() > 0 && column.getComponent(0) == formCard)
+		{
+			// The form stays where it is and only the cards below it are rebuilt, so a member typing in it or
+			// picking from it carries on undisturbed.
+			while (column.getComponentCount() > 1)
+			{
+				column.remove(column.getComponentCount() - 1);
+			}
+		}
+		else
+		{
+			column.removeAll();
+		}
 		if (in.getNotConnected() != null)
 		{
 			Card card = new Card("Groups");
@@ -141,9 +156,11 @@ final class GroupTabs
 		{
 			form.setActivities(in.getActivities());
 			form.setBusy(in.isBusy());
-			Card card = new Card("Start a group");
-			card.addWide(form);
-			addCard(column, card);
+			form.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, form.getPreferredSize().height));
+			if (column.getComponentCount() == 0)
+			{
+				addCard(column, formCard);
+			}
 		}
 
 		List<ClanData.Group> others = new ArrayList<>();
@@ -330,6 +347,8 @@ final class GroupTabs
 			String note;
 		}
 
+		/** The "Start a group" card holding this form, kept so redraws can leave it in place. */
+		private Card card;
 		private final JComboBox<String> activity = new JComboBox<>();
 		private final JComboBox<String> mode = new JComboBox<>();
 		private final JComboBox<String> size = new JComboBox<>();
@@ -401,6 +420,16 @@ final class GroupTabs
 			}
 			filling = false;
 			fillChoices();
+		}
+
+		Card card()
+		{
+			if (card == null)
+			{
+				card = new Card("Start a group");
+				card.addWide(this);
+			}
+			return card;
 		}
 
 		/** A drop-down list is open, so the tab mustn't redraw under it. */

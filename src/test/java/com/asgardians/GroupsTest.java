@@ -119,6 +119,29 @@ public class GroupsTest
 	}
 
 	@Test
+	public void redrawsLeaveTheFormInPlace()
+	{
+		GroupTabs.Actions a = actions();
+		GroupTabs.GroupForm form = new GroupTabs.GroupForm(v -> { });
+		ZoneId zone = ZoneId.of("Europe/London");
+		JPanel column = PanelParts.column();
+		GroupTabs.draw(column, new GroupTabs.Input(groups(null), List.of(), false, null, "Rozzle", Map.of(), false, false, null, zone), form, a);
+		java.awt.Component card = column.getComponent(0);
+		assertTrue(javax.swing.SwingUtilities.isDescendingFrom(form, (java.awt.Container) card));
+		// A new group appears: the form isn't taken out and put back, so the member's cursor stays in it.
+		GroupTabs.draw(column, new GroupTabs.Input(groups(null, group("g2", "Clo", 4, "302", "Clo")), List.of(), false, null, "Rozzle",
+			Map.of(), false, false, null, zone), form, a);
+		assertTrue(column.getComponent(0) == card);
+		assertTrue(form.getParent() == card);
+		// In a group the form is hidden; out of it again, it's back on top.
+		GroupTabs.draw(column, new GroupTabs.Input(groups("g1", group("g1", "Rozzle", 4, "416", "Rozzle")), List.of(), false, null,
+			"Rozzle", Map.of(), false, false, null, zone), form, a);
+		assertTrue(!javax.swing.SwingUtilities.isDescendingFrom(form, column));
+		GroupTabs.draw(column, new GroupTabs.Input(groups(null), List.of(), false, null, "Rozzle", Map.of(), false, false, null, zone), form, a);
+		assertTrue(column.getComponent(0) == card);
+	}
+
+	@Test
 	public void theTabDrawsInEveryState()
 	{
 		GroupTabs.Actions a = actions();

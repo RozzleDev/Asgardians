@@ -237,13 +237,8 @@ class AsgardiansPanel extends PluginPanel
 			return;
 		}
 		lastGroupsKey = key;
-		java.awt.Component focus = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-		boolean typing = focus != null && javax.swing.SwingUtilities.isDescendingFrom(focus, groupForm);
+		// GroupTabs.draw leaves the "Start a group" form in place, so whatever the member is typing keeps its cursor.
 		keepingScroll(groupsTab, () -> GroupTabs.draw(groupsTab, input, groupForm, groupActions));
-		if (typing && javax.swing.SwingUtilities.isDescendingFrom(focus, groupsTab))
-		{
-			javax.swing.SwingUtilities.invokeLater(focus::requestFocusInWindow);
-		}
 	}
 
 	private Object lastGroupsKey;
