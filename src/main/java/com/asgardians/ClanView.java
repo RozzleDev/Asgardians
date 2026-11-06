@@ -771,6 +771,20 @@ class ClanView
 		}
 	}
 
+
+	/** RSNs from the website without empty entries, so a stray null or blank name can't break the panel. */
+	static List<String> names(List<String> names)
+	{
+		List<String> out = new ArrayList<>();
+		for (String name : orEmpty(names))
+		{
+			if (name != null && !name.trim().isEmpty())
+			{
+				out.add(name);
+			}
+		}
+		return out;
+	}
 	static <T> List<T> orEmpty(List<T> list)
 	{
 		return list == null ? Collections.emptyList() : list;

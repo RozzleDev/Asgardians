@@ -65,7 +65,12 @@ final class TeamBadges
 		int slot = 0;
 		for (ClanData.Team team : event.teams())
 		{
-			if (slot >= MAX_TEAMS || team.getId() == null)
+			if (team.getId() == null)
+			{
+				// Can't be matched to its players; skip it rather than stopping, so the other teams still get badges.
+				continue;
+			}
+			if (slot >= MAX_TEAMS)
 			{
 				break;
 			}
@@ -92,7 +97,7 @@ final class TeamBadges
 			{
 				continue;
 			}
-			for (String member : ClanView.orEmpty(team.getMembers()))
+			for (String member : ClanView.names(team.getMembers()))
 			{
 				out.put(key(member), badge);
 			}

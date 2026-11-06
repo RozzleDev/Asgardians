@@ -33,7 +33,6 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 import lombok.Value;
-import net.runelite.client.config.ConfigManager;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.QuantityFormatter;
@@ -83,7 +82,15 @@ class AsgardiansPanel extends PluginPanel
 	private final Runnable refreshClan;
 	private final Runnable newsOpened;
 	private final ClanTabs.Actions eventActions;
-	private final ConfigManager configManager;
+	private final Settings settings;
+
+	/** Where the panel keeps the member's choices: the plugin's saved settings in RuneLite, or a map in tests. */
+	interface Settings
+	{
+		String get(String key);
+
+		void set(String key, String value);
+	}
 	/** The last data drawn, so the panel's own controls can redraw without waiting for a reload. */
 	private ClanTabs.Input lastInput;
 	/** The member's choices: Events page, open event and teams, leaderboard period and folded boards. */
@@ -96,13 +103,13 @@ class AsgardiansPanel extends PluginPanel
 	private static final String PERIOD_KEY = "leaderboardPeriod";
 	private static final String FOLDED_KEY = "foldedLeaderboards";
 
-	AsgardiansPanel(ConfigManager configManager, Runnable syncPbs, Runnable refreshClan, Runnable newsOpened,
+	AsgardiansPanel(Settings settings, Runnable syncPbs, Runnable refreshClan, Runnable newsOpened,
 		ClanTabs.Actions eventActions)
 	{
-		this.configManager = configManager;
-		String savedPeriod = configManager.getConfiguration(AsgardiansConfig.GROUP, PERIOD_KEY);
-		period = ClanTabs.PERIODS.contains(savedPeriod) ? savedPeriod : ClanTabs.MONTH;
-		String savedFolded = configManager.getConfiguration(AsgardiansConfig.GROUP, FOLDED_KEY);
+		this.settings = settings;
+		String savedPeriod = settings.get(PERIOD_KEY);
+		period = ClanTabs.period(savedPeriod);
+		String savedFolded = settings.get(FOLDED_KEY);
 		if (savedFolded != null && !savedFolded.isEmpty())
 		{
 			folded.addAll(Arrays.asList(savedFolded.split("\n")));
@@ -211,7 +218,7 @@ class AsgardiansPanel extends PluginPanel
 		public void period(String value)
 		{
 			period = value;
-			configManager.setConfiguration(AsgardiansConfig.GROUP, PERIOD_KEY, value);
+			settings.set(PERIOD_KEY, value);
 			redraw();
 		}
 
@@ -222,7 +229,7 @@ class AsgardiansPanel extends PluginPanel
 			{
 				folded.add(title);
 			}
-			configManager.setConfiguration(AsgardiansConfig.GROUP, FOLDED_KEY, String.join("\n", folded));
+			settings.set(FOLDED_KEY, String.join("\n", folded));
 			redraw();
 		}
 	};

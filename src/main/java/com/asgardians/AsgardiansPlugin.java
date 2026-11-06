@@ -306,7 +306,20 @@ public class AsgardiansPlugin extends Plugin
 		codewordOverlay = new CodewordOverlay(this, config, () -> clanView);
 		overlayManager.add(codewordOverlay);
 
-		panel = new AsgardiansPanel(configManager, () -> executor.execute(this::syncPbsNow),
+		panel = new AsgardiansPanel(new AsgardiansPanel.Settings()
+		{
+			@Override
+			public String get(String key)
+			{
+				return configManager.getConfiguration(AsgardiansConfig.GROUP, key);
+			}
+
+			@Override
+			public void set(String key, String value)
+			{
+				configManager.setConfiguration(AsgardiansConfig.GROUP, key, value);
+			}
+		}, () -> executor.execute(this::syncPbsNow),
 			() -> executor.execute(() -> refreshClan(true)),
 			() -> clientThread.invokeLater(this::markNewsRead),
 			new ClanTabs.Actions()

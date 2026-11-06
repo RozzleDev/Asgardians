@@ -81,6 +81,15 @@ final class ClanTabs
 	static final List<String> PERIODS = List.of(MONTH, YEAR, ALL);
 	private static final List<String> PERIOD_LABELS = List.of("This month", "This year", "All time");
 
+	/**
+	 * A known period, or MONTH. Null-safe: List.of(...).contains(null) throws, and a member who never picked a
+	 * period has none saved.
+	 */
+	static String period(String saved)
+	{
+		return saved != null && PERIODS.contains(saved) ? saved : MONTH;
+	}
+
 	/** What the panel's own controls do: page, event, team and period choices, and folding boards. Swing thread. */
 	interface UiActions
 	{
@@ -549,7 +558,7 @@ final class ClanTabs
 		{
 			card.add(small(standing, QUIET));
 		}
-		List<String> members = ClanView.orEmpty(team.getMembers());
+		List<String> members = ClanView.names(team.getMembers());
 		card.gap();
 		if (members.isEmpty())
 		{
@@ -610,7 +619,7 @@ final class ClanTabs
 			addCard(column, card);
 			return;
 		}
-		int selected = Math.max(PERIODS.indexOf(ui.getPeriod()), 0);
+		int selected = PERIODS.indexOf(period(ui.getPeriod()));
 		addCard(column, PanelParts.choice(PERIOD_LABELS, selected, 3, i -> uiActions.period(PERIODS.get(i))));
 		List<ClanData.Leaderboard> boards = in.getLeaderboards().getOrDefault(PERIODS.get(selected), List.of());
 		for (ClanData.Leaderboard board : boards)
@@ -735,7 +744,7 @@ final class ClanTabs
 			{
 				card.add(small(standing, QUIET));
 			}
-			for (String member : ClanView.orEmpty(team.getMembers()))
+			for (String member : ClanView.names(team.getMembers()))
 			{
 				Integer world = in.getOnline().get(member.toLowerCase(Locale.UK));
 				String name = member + (member.equalsIgnoreCase(team.getCaptain()) ? " ★" : "");
