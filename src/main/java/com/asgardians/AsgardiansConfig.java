@@ -36,6 +36,13 @@ public interface AsgardiansConfig extends Config
 	String groupsSection = "groups";
 
 	@ConfigSection(
+		name = "Handeggs",
+		description = "Easter handegg throws between clan members",
+		position = 4
+	)
+	String eggsSection = "eggs";
+
+	@ConfigSection(
 		name = "Advanced",
 		description = "Settings for testing against another copy of the website",
 		position = 10,
@@ -141,7 +148,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "groupAlerts",
 		name = "New groups in chat",
-		description = "A chat message when a clan member starts a group in the Groups tab, so you can join. Messages about your own group always show.",
+		description = "A chat message when a clan member starts a group in the Groups tab, so you can join. Pick which activities with the bells under \"Group alerts\" in the Groups tab. Turning this off mutes them all, except any clan staff send to everyone. Messages about your own group always show.",
 		section = groupsSection,
 		position = 0
 	)
@@ -151,13 +158,49 @@ public interface AsgardiansConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "groupOverlay",
+		name = "New groups on screen",
+		description = "Also show new groups on screen for a few seconds. Pick which activities with the screen icons under \"Group alerts\" in the Groups tab (all are on until you change them). Turn this off to never show them on screen.",
+		section = groupsSection,
+		position = 1
+	)
+	default boolean groupOverlay()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "groupParty",
 		name = "Join a group's RuneLite party",
 		description = "When you start or join a group, put you in its RuneLite party (the one the Party plugin shows), and take you out when you leave",
 		section = groupsSection,
-		position = 1
+		position = 2
 	)
 	default boolean groupParty()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "eggMessages",
+		name = "Egg messages in chat",
+		description = "A chat message when you egg a clan member or one eggs you, and when one clan member eggs another",
+		section = eggsSection,
+		position = 0
+	)
+	default boolean eggMessages()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "eggSound",
+		name = "Sound when egged",
+		description = "Play the Ice Barrage freeze sound when a clan member hits you with a handegg",
+		section = eggsSection,
+		position = 1
+	)
+	default boolean eggSound()
 	{
 		return true;
 	}

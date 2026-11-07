@@ -58,6 +58,23 @@ final class GroupTabs
 		boolean busy;
 		Instant fetchedAt;
 		ZoneId zone;
+		/** The "Group alerts" card; null leaves it out. */
+		Bells bells;
+	}
+
+	/** Which activities ring for new groups, and whether the card is open. */
+	@Value
+	static class Bells
+	{
+		/** The member's own choices, by activity ID. */
+		Map<String, Boolean> choices;
+		/** The "New groups in chat" setting. */
+		boolean alertsOn;
+		boolean open;
+		/** The member's screen icons, by activity ID. */
+		Map<String, Boolean> screens;
+		/** The "New groups on screen" setting. */
+		boolean screenOn;
 	}
 
 	/** What the buttons do. Swing thread. */
@@ -76,6 +93,26 @@ final class GroupTabs
 		void joinParty(ClanData.Group group);
 
 		void refresh();
+
+		/** Opens the group's Discord voice channel. */
+		default void joinVoice(ClanData.Group group)
+		{
+		}
+
+		/** The member rang or muted the bell for an activity. */
+		default void bell(String activityId, boolean on)
+		{
+		}
+
+		/** The member turned the on-screen alert for an activity on or off. */
+		default void screen(String activityId, boolean on)
+		{
+		}
+
+		/** The "Group alerts" card was folded or opened. */
+		default void foldBells()
+		{
+		}
 	}
 
 	private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.UK);
@@ -104,7 +141,7 @@ final class GroupTabs
 		}
 		String minute = in.getFetchedAt() != null ? TIME.withZone(in.getZone()).format(in.getFetchedAt()) : null;
 		return java.util.Arrays.asList(list, in.getActivities(), in.isUnsupported(), in.getNotConnected(), in.getMe(),
-			online, in.isInParty(), in.isBusy(), minute);
+			online, in.isInParty(), in.isBusy(), minute, in.getBells());
 	}
 
 	static void draw(JPanel column, Input in, GroupForm form, Actions actions)
@@ -183,8 +220,101 @@ final class GroupTabs
 			addCard(column, groupCard(g, mine != null, in, actions));
 		}
 
+		if (in.getBells() != null && !ClanView.orEmpty(in.getActivities()).isEmpty())
+		{
+			addCard(column, bellsCard(in.getActivities(), in.getBells(), actions));
+		}
+
 		JLabel updated = small(in.getFetchedAt() != null ? "Updated " + TIME.withZone(in.getZone()).format(in.getFetchedAt()) : "", QUIET);
 		addCard(column, PanelParts.spread(updated, PanelParts.link("Refresh", actions::refresh)));
+	}
+
+	/**
+	 * Every activity with a bell: ringing ones are announced in chat when a clanmate starts a group. Clan staff can
+	 * send some to everyone, and those bells can't be muted.
+	 */
+	static Card bellsCard(List<ClanData.GroupActivity> activities, Bells bells, Actions actions)
+	{
+		Card card = new Card(null);
+		int ringing = 0;
+		for (ClanData.GroupActivity a : activities)
+		{
+			if (a != null && GroupBells.rings(a, bells.getChoices(), bells.isAlertsOn()))
+			{
+				ringing++;
+			}
+		}
+		card.addWide(PanelParts.foldHeader("Group alerts", bells.isOpen(), bells.isOpen() ? null : ringing + " on", actions::foldBells));
+		if (!bells.isOpen())
+		{
+			return card;
+		}
+		card.add(Box.createVerticalStrut(4));
+		card.add(small(bells.isAlertsOn()
+			? "Ring a bell to get a chat message when a clan member starts a group for it."
+			: "\"New groups in chat\" is off in the plugin settings, so only the gold bells (sent to everyone by clan staff) ring.", QUIET));
+		card.add(small(bells.isScreenOn()
+			? "The screen icon also shows it on screen for a few seconds."
+			: "\"New groups on screen\" is off in the plugin settings, so nothing shows on screen.", QUIET));
+		card.gap();
+		for (ClanData.GroupActivity a : activities)
+		{
+			if (a == null || a.getId() == null)
+			{
+				continue;
+			}
+			boolean locked = GroupBells.ALWAYS.equals(GroupBells.mode(a));
+			boolean on = GroupBells.bell(a, bells.getChoices());
+			boolean rings = GroupBells.rings(a, bells.getChoices(), bells.isAlertsOn());
+			JLabel name = PanelParts.plain(a.getName() != null ? a.getName() : a.getId(), rings ? TEXT : QUIET);
+			JButton bell = new JButton(new GroupBells.BellIcon(on, locked));
+			bell.setFocusable(false);
+			bell.setBorderPainted(false);
+			bell.setContentAreaFilled(false);
+			bell.setMargin(new java.awt.Insets(0, 0, 0, 0));
+			bell.setPreferredSize(new Dimension(22, 18));
+			if (locked)
+			{
+				bell.setToolTipText("Clan staff send these to every member");
+				bell.setEnabled(true);
+			}
+			else
+			{
+				bell.setToolTipText(on ? "Ringing: click to mute" : "Muted: click to ring");
+				bell.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+				bell.addActionListener(e -> actions.bell(a.getId(), !on));
+			}
+			bell.getAccessibleContext().setAccessibleName((a.getName() != null ? a.getName() : a.getId()) + " alerts "
+				+ (locked ? "always on" : on ? "on" : "off"));
+
+			boolean usable = bells.isScreenOn() && rings;
+			boolean screenOn = GroupBells.screen(a, bells.getScreens());
+			JButton screen = new JButton(new GroupBells.ScreenIcon(screenOn, usable));
+			screen.setFocusable(false);
+			screen.setBorderPainted(false);
+			screen.setContentAreaFilled(false);
+			screen.setMargin(new java.awt.Insets(0, 0, 0, 0));
+			screen.setPreferredSize(new Dimension(22, 18));
+			screen.getAccessibleContext().setAccessibleName((a.getName() != null ? a.getName() : a.getId()) + " on screen "
+				+ (screenOn ? "on" : "off"));
+			if (!usable)
+			{
+				screen.setToolTipText(!bells.isScreenOn() ? "\"New groups on screen\" is off in the plugin settings"
+					: "Ring the bell to show these on screen");
+			}
+			else
+			{
+				screen.setToolTipText(screenOn ? "Shown on screen: click to stop" : "Not shown on screen: click to show");
+				screen.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+				screen.addActionListener(e -> actions.screen(a.getId(), !screenOn));
+			}
+			JPanel icons = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+			icons.setOpaque(false);
+			icons.add(screen);
+			icons.add(bell);
+			card.addWide(PanelParts.spread(name, icons));
+		}
+		return card;
 	}
 
 	/** The member's own group, with members, the party, and leave, close and kick. */
@@ -223,6 +353,11 @@ final class GroupTabs
 				card.addWide(dotRow(world != null ? GOOD : QUIET, name, world != null ? "W" + world : "offline",
 					world != null ? "Online on world " + world : "Offline"));
 			}
+		}
+		if (Groups.voiceLink(g) != null)
+		{
+			card.gap();
+			card.addWide(PanelParts.spread(small("Discord voice channel", QUIET), PanelParts.link("Join voice", () -> actions.joinVoice(g))));
 		}
 		if (g.getParty() != null && !g.getParty().trim().isEmpty())
 		{
@@ -345,6 +480,10 @@ final class GroupTabs
 			/** split or ffa; null when the activity has no choice. */
 			String loot;
 			String note;
+			/** Ask the website to make a Discord voice channel for the group. */
+			boolean voice;
+			/** Lock the voice channel to the group's size. Only matters with voice on and a set size. */
+			boolean voiceLimit;
 		}
 
 		/** The "Start a group" card holding this form, kept so redraws can leave it in place. */
@@ -353,6 +492,8 @@ final class GroupTabs
 		private final JComboBox<String> mode = new JComboBox<>();
 		private final JComboBox<String> size = new JComboBox<>();
 		private final JCheckBox ffa = new JCheckBox("Free for all (FFA)");
+		private final JCheckBox voice = new JCheckBox("Discord voice channel", true);
+		private final JCheckBox voiceLimit = new JCheckBox("Lock to group size", true);
 		private final JTextField note = new JTextField();
 		private final JLabel modeLabel = label("Mode");
 		private final JButton create;
@@ -367,6 +508,16 @@ final class GroupTabs
 			ffa.setFont(net.runelite.client.ui.FontManager.getRunescapeSmallFont());
 			ffa.setForeground(TEXT);
 			ffa.setToolTipText("Unticked means Split");
+			voice.setOpaque(false);
+			voice.setFont(net.runelite.client.ui.FontManager.getRunescapeSmallFont());
+			voice.setForeground(TEXT);
+			voice.setToolTipText("Make a voice channel for the group in the clan Discord. It goes when the group closes.");
+			voiceLimit.setOpaque(false);
+			voiceLimit.setFont(net.runelite.client.ui.FontManager.getRunescapeSmallFont());
+			voiceLimit.setForeground(TEXT);
+			voiceLimit.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 16, 0, 0));
+			voiceLimit.setToolTipText("Only as many people as the group's size can be in the voice channel. Unticked, anyone can join it.");
+			voice.addItemListener(e -> voiceLimit.setEnabled(voice.isSelected()));
 			note.setToolTipText("Optional, e.g. learner friendly, gear or KC needed");
 			add(label("Activity"));
 			add(wide(activity));
@@ -375,6 +526,8 @@ final class GroupTabs
 			add(label("Size"));
 			add(wide(size));
 			add(wide(ffa));
+			add(wide(voice));
+			add(wide(voiceLimit));
 			add(label("Note (optional)"));
 			add(wide(note));
 			add(Box.createVerticalStrut(6));
@@ -515,7 +668,8 @@ final class GroupTabs
 				text = text.substring(0, NOTE_LIMIT);
 			}
 			return new Values(a, mode.isVisible() ? (String) mode.getSelectedItem() : null, seats, mass,
-				a.isLoot() ? (ffa.isSelected() ? "ffa" : "split") : null, text.isEmpty() ? null : text);
+				a.isLoot() ? (ffa.isSelected() ? "ffa" : "split") : null, text.isEmpty() ? null : text, voice.isSelected(),
+				voice.isSelected() && voiceLimit.isSelected());
 		}
 
 		/** The activity can't go past its maxSize: it has one of 8 or less, and isn't marked as a mass. */

@@ -17,7 +17,16 @@ class Record
 		pet,
 		clog,
 		pb,
-		death
+		death,
+		egg
+	}
+
+	/** Egg records: a handegg thrown by one player and caught by another. One of them is the player. */
+	@Data
+	static class Egg
+	{
+		private final String thrower;
+		private final String target;
 	}
 
 	@Data
@@ -63,6 +72,9 @@ class Record
 	/** Death records. */
 	private Death death;
 
+	/** Egg records. */
+	private Egg egg;
+
 	/** True when a screenshot is uploaded with this record. */
 	private boolean screenshot;
 
@@ -83,6 +95,8 @@ class Record
 				return "Clog: " + itemName;
 			case pb:
 				return "PB: " + (pb != null ? pb.display() : "");
+			case egg:
+				return egg == null ? "Egg" : "Egg: " + egg.getThrower() + " egged " + egg.getTarget();
 			case death:
 				if (death == null || death.getKiller() == null || death.getKiller().getName() == null)
 				{

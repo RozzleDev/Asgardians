@@ -429,6 +429,16 @@ final class ClanData
 		private boolean loot;
 		/** RuneLite's kill count name for this content, e.g. "theatre of blood", so the member's KC can be shown. */
 		private String kcName;
+		/**
+		 * New-group chat messages: "on" or "off" by default with the member's bell to change it, or "always" for every
+		 * member. Missing means "on".
+		 */
+		private String alerts;
+		/** A short name for chat messages and the on-screen alert, e.g. "ToB". Optional. */
+		@com.google.gson.annotations.SerializedName("short")
+		private String shortName;
+		/** Short names for modes, e.g. {"Hard mode": "HM"}. Optional; a mode without one is shown in full. */
+		private java.util.Map<String, String> modeShorts;
 	}
 
 	/** GET /plugin/groups, POST /plugin/groups/checkin, and the reply to every group action. */
@@ -483,6 +493,8 @@ final class ClanData
 		private List<GroupMember> members;
 		/** The RuneLite party passphrase. Only sent to members. */
 		private String party;
+		/** The group's Discord voice channel link, when one was made. Only sent to members. */
+		private String voice;
 		/** True when this member may close the group: its host, or a clan moderator. */
 		private Boolean canClose;
 		private String createdAt;
@@ -570,6 +582,26 @@ final class ClanData
 		{
 			return parse(postedAt);
 		}
+	}
+
+	/**
+	 * GET /plugin/eggs?after=cursor: eggings since the cursor, oldest first. Without a cursor the website sends only
+	 * the current cursor, so a member who logs in isn't shown old ones.
+	 */
+	@Data
+	static class EggFeed
+	{
+		private String cursor;
+		private List<EggAlert> eggs;
+	}
+
+	@Data
+	static class EggAlert
+	{
+		private String id;
+		private String thrower;
+		private String target;
+		private String at;
 	}
 
 	/**

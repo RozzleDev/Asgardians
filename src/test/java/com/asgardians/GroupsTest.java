@@ -87,7 +87,7 @@ public class GroupsTest
 		ClanData.GroupList before = groups(null, group("g1", "Clo", 4, "416", "Clo"));
 		ClanData.GroupList now = groups(null, group("g1", "Clo", 4, "416", "Clo"), group("g2", "Str4tty", 5, "302", "Str4tty"),
 			group("g3", "Rozzle", 4, "416", "Rozzle"), group("g4", "Dolorosa", 1, "416", "Dolorosa"));
-		assertEquals(List.of("Str4tty started a Theatre of Blood (Hard mode) group (1/5) on W302. Join from the Groups tab."),
+		assertEquals(List.of("Str4tty started a group: Theatre of Blood (Hard mode), 1/5, W302. Join from the Groups tab."),
 			Groups.started(before, now, "Rozzle"));
 	}
 
@@ -125,19 +125,19 @@ public class GroupsTest
 		GroupTabs.GroupForm form = new GroupTabs.GroupForm(v -> { });
 		ZoneId zone = ZoneId.of("Europe/London");
 		JPanel column = PanelParts.column();
-		GroupTabs.draw(column, new GroupTabs.Input(groups(null), List.of(), false, null, "Rozzle", Map.of(), false, false, null, zone), form, a);
+		GroupTabs.draw(column, new GroupTabs.Input(groups(null), List.of(), false, null, "Rozzle", Map.of(), false, false, null, zone, null), form, a);
 		java.awt.Component card = column.getComponent(0);
 		assertTrue(javax.swing.SwingUtilities.isDescendingFrom(form, (java.awt.Container) card));
 		// A new group appears: the form isn't taken out and put back, so the member's cursor stays in it.
 		GroupTabs.draw(column, new GroupTabs.Input(groups(null, group("g2", "Clo", 4, "302", "Clo")), List.of(), false, null, "Rozzle",
-			Map.of(), false, false, null, zone), form, a);
+			Map.of(), false, false, null, zone, null), form, a);
 		assertTrue(column.getComponent(0) == card);
 		assertTrue(form.getParent() == card);
 		// In a group the form is hidden; out of it again, it's back on top.
 		GroupTabs.draw(column, new GroupTabs.Input(groups("g1", group("g1", "Rozzle", 4, "416", "Rozzle")), List.of(), false, null,
-			"Rozzle", Map.of(), false, false, null, zone), form, a);
+			"Rozzle", Map.of(), false, false, null, zone, null), form, a);
 		assertTrue(!javax.swing.SwingUtilities.isDescendingFrom(form, column));
-		GroupTabs.draw(column, new GroupTabs.Input(groups(null), List.of(), false, null, "Rozzle", Map.of(), false, false, null, zone), form, a);
+		GroupTabs.draw(column, new GroupTabs.Input(groups(null), List.of(), false, null, "Rozzle", Map.of(), false, false, null, zone, null), form, a);
 		assertTrue(column.getComponent(0) == card);
 	}
 
@@ -159,11 +159,11 @@ public class GroupsTest
 		{
 			for (boolean busy : new boolean[]{false, true})
 			{
-				GroupTabs.draw(new JPanel(), new GroupTabs.Input(l, activities, false, null, "Rozzle", online, busy, busy, now, zone), form, a);
+				GroupTabs.draw(new JPanel(), new GroupTabs.Input(l, activities, false, null, "Rozzle", online, busy, busy, now, zone, null), form, a);
 			}
 		}
-		GroupTabs.draw(new JPanel(), new GroupTabs.Input(null, List.of(), true, null, "Rozzle", Map.of(), false, false, null, zone), form, a);
-		GroupTabs.draw(new JPanel(), new GroupTabs.Input(null, null, false, "Log in to find or start a group.", null, Map.of(), false, false, null, zone), form, a);
+		GroupTabs.draw(new JPanel(), new GroupTabs.Input(null, List.of(), true, null, "Rozzle", Map.of(), false, false, null, zone, null), form, a);
+		GroupTabs.draw(new JPanel(), new GroupTabs.Input(null, null, false, "Log in to find or start a group.", null, Map.of(), false, false, null, zone, null), form, a);
 
 		GroupTabs.GroupForm.Values v = form.values();
 		assertEquals("tob", v.getActivity().getId());
@@ -178,14 +178,14 @@ public class GroupsTest
 		ClanData.GroupList l = groups(null, group("g1", "Clo", 4, "416", "Clo"));
 		ZoneId zone = ZoneId.of("Europe/London");
 		GroupTabs.Input a = new GroupTabs.Input(l, List.of(), false, null, "Rozzle", Map.of("clo", 416, "someone", 301), false, false,
-			Instant.parse("2026-11-06T12:00:05Z"), zone);
+			Instant.parse("2026-11-06T12:00:05Z"), zone, null);
 		// Seconds later, same minute, and a clan member who isn't in a group hopped: nothing shown changed.
 		GroupTabs.Input b = new GroupTabs.Input(groups(null, group("g1", "Clo", 4, "416", "Clo")), List.of(), false, null, "Rozzle",
-			Map.of("clo", 416, "someone", 420), false, false, Instant.parse("2026-11-06T12:00:45Z"), zone);
+			Map.of("clo", 416, "someone", 420), false, false, Instant.parse("2026-11-06T12:00:45Z"), zone, null);
 		assertEquals(GroupTabs.redrawKey(a), GroupTabs.redrawKey(b));
 		// The host went offline: redraw.
 		GroupTabs.Input c = new GroupTabs.Input(l, List.of(), false, null, "Rozzle", Map.of(), false, false,
-			Instant.parse("2026-11-06T12:00:45Z"), zone);
+			Instant.parse("2026-11-06T12:00:45Z"), zone, null);
 		assertTrue(!GroupTabs.redrawKey(a).equals(GroupTabs.redrawKey(c)));
 	}
 

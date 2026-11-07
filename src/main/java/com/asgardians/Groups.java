@@ -90,20 +90,96 @@ final class Groups
 	/** Lines for groups other members started since the last list, for the "New groups in chat" setting. */
 	static List<String> started(ClanData.GroupList before, ClanData.GroupList now, String me)
 	{
+		return started(before, now, me, activity -> true);
+	}
+
+	/** @param rings whether new groups for an activity ID are announced to the member */
+	static List<String> started(ClanData.GroupList before, ClanData.GroupList now, String me,
+		java.util.function.Predicate<String> rings)
+	{
 		List<String> out = new ArrayList<>();
+		for (ClanData.Group g : startedGroups(before, now, me, rings))
+		{
+			out.add(startedLine(g));
+		}
+		return out;
+	}
+
+	/** Groups other members started since the last list that still have room, for activities that ring. */
+	static List<ClanData.Group> startedGroups(ClanData.GroupList before, ClanData.GroupList now, String me,
+		java.util.function.Predicate<String> rings)
+	{
+		List<ClanData.Group> out = new ArrayList<>();
 		if (before == null || now == null)
 		{
 			return out;
 		}
 		for (ClanData.Group g : orEmpty(now.getGroups()))
 		{
-			if (g.getId() != null && before.find(g.getId()) == null && !DropRecorder.sameRsn(g.getHost(), me) && !g.isFull())
+			if (g != null && g.getId() != null && before.find(g.getId()) == null && !DropRecorder.sameRsn(g.getHost(), me)
+				&& !g.isFull() && rings.test(g.getActivity()))
 			{
-				out.add((g.getHost() != null ? g.getHost() : "Someone") + " started a " + g.getTitle() + " group ("
-					+ g.seats() + ") on " + world(g) + ". Join from the Groups tab.");
+				out.add(g);
 			}
 		}
 		return out;
+	}
+
+	/**
+	 * The group's Discord voice link, when it's a Discord channel or invite link: https on discord.com (or
+	 * ptb./canary.), discord.gg or discordapp.com. Anything else is ignored, so a bad link can't open some other site.
+	 */
+	static String voiceLink(ClanData.Group g)
+	{
+		String url = g != null && g.getVoice() != null ? g.getVoice().trim() : null;
+		okhttp3.HttpUrl link = url != null ? okhttp3.HttpUrl.parse(url) : null;
+		if (link == null || !link.isHttps())
+		{
+			return null;
+		}
+		String host = link.host();
+		boolean discord = host.equals("discord.com") || host.equals("ptb.discord.com") || host.equals("canary.discord.com")
+			|| host.equals("discord.gg") || host.equals("discordapp.com");
+		return discord ? link.toString() : null;
+	}
+
+	static String startedLine(ClanData.Group g)
+	{
+		return startedLine(g, g.getTitle());
+	}
+
+	/** @param title the group's title, short where the website gives short names */
+	static String startedLine(ClanData.Group g, String title)
+	{
+		return (g.getHost() != null ? g.getHost() : "Someone") + " started a group: " + title + ", " + g.seats() + ", "
+			+ world(g) + ". Join from the Groups tab.";
+	}
+
+	/**
+	 * "ToB HM" when the website gives short names for the activity and its mode, otherwise the full title. A part
+	 * without a short name is shown in full: "ToB (Entry mode)" or "Theatre of Blood HM".
+	 */
+	static String shortTitle(ClanData.Group g, ClanData.GroupActivity activity)
+	{
+		String shortName = activity != null ? blankToNull(activity.getShortName()) : null;
+		String mode = blankToNull(g.getMode());
+		String shortMode = mode != null && activity != null && activity.getModeShorts() != null
+			? blankToNull(activity.getModeShorts().get(mode)) : null;
+		if (shortName == null && shortMode == null)
+		{
+			return g.getTitle();
+		}
+		String base = shortName != null ? shortName : g.getName() != null ? g.getName() : g.getActivity() != null ? g.getActivity() : "Group";
+		if (mode == null)
+		{
+			return base;
+		}
+		return shortMode != null ? base + " " + shortMode : base + " (" + mode + ")";
+	}
+
+	private static String blankToNull(String s)
+	{
+		return s != null && !s.trim().isEmpty() ? s.trim() : null;
 	}
 
 	private static String removed(ClanData.Group was, ClanData.GroupList now)

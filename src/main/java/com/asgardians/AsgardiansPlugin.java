@@ -33,6 +33,7 @@ import net.runelite.api.Prayer;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.ScriptPreFired;
@@ -208,6 +209,7 @@ public class AsgardiansPlugin extends Plugin
 
 	private ClanFetcher clanFetcher;
 	private CodewordOverlay codewordOverlay;
+	private GroupAlertOverlay groupAlertOverlay;
 	private volatile ClanView clanView = ClanView.empty();
 	private volatile long lastClanFetch;
 	/** The member's clan profile for the Connection card. */
@@ -234,6 +236,13 @@ public class AsgardiansPlugin extends Plugin
 	private volatile java.time.Instant statsFetchedAt;
 	private volatile long lastStatsFetch;
 	private final AtomicBoolean fetchingStats = new AtomicBoolean();
+	/** Handegg throws seen nearby, to spot ones the player is part of. Client thread. */
+	private final EggTracker eggs = new EggTracker();
+	/** Where the clan's egg feed is up to; null until the first fetch after logging in. */
+	private volatile String eggCursor;
+	/** The website doesn't have the egg feed yet. */
+	private volatile boolean eggsUnsupported;
+	private final AtomicBoolean fetchingEggs = new AtomicBoolean();
 	/** Sign-up lists loaded so far, events whose list is open, and events with a request in flight. */
 	private final Map<String, ClanData.SignupList> signupLists = new java.util.concurrent.ConcurrentHashMap<>();
 	private final Set<String> signupsOpen = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -357,6 +366,8 @@ public class AsgardiansPlugin extends Plugin
 		}
 		codewordOverlay = new CodewordOverlay(this, config, () -> clanView);
 		overlayManager.add(codewordOverlay);
+		groupAlertOverlay = new GroupAlertOverlay(this, () -> config.groupOverlay(), System::currentTimeMillis);
+		overlayManager.add(groupAlertOverlay);
 
 		panel = new AsgardiansPanel(new AsgardiansPanel.Settings()
 		{
@@ -428,6 +439,11 @@ public class AsgardiansPlugin extends Plugin
 				task.cancel(false);
 			}
 		}
+		if (groupAlertOverlay != null)
+		{
+			overlayManager.remove(groupAlertOverlay);
+			groupAlertOverlay = null;
+		}
 		if (codewordOverlay != null)
 		{
 			overlayManager.remove(codewordOverlay);
@@ -491,6 +507,11 @@ public class AsgardiansPlugin extends Plugin
 		{
 			status = null;
 			executor.execute(this::fetchSettings);
+		}
+		if ("groupAlerts".equals(event.getKey()) || "groupOverlay".equals(event.getKey()))
+		{
+			// The Group alerts card explains what these settings turn off.
+			refreshGroupsPanel();
 		}
 		clientThread.invokeLater(this::onAccountState);
 	}
@@ -637,6 +658,7 @@ public class AsgardiansPlugin extends Plugin
 		{
 			fetchStats();
 		}
+		fetchEggs();
 		clientThread.invokeLater(() ->
 		{
 			sendReminders();
@@ -909,7 +931,7 @@ public class AsgardiansPlugin extends Plugin
 		AsgardiansPanel shown = panel;
 		long every = groupsUnsupported ? GROUP_UNSUPPORTED_MILLIS
 			: inGroup || (shown != null && shown.groupsShown()) ? GROUP_IN_GROUP_MILLIS
-			: config.groupAlerts() ? GROUP_ALERT_MILLIS : GROUP_IDLE_MILLIS;
+			: anyBellRings() ? GROUP_ALERT_MILLIS : GROUP_IDLE_MILLIS;
 		long now = System.currentTimeMillis();
 		if (now - lastGroupsPoll < every || !groupsPolling.compareAndSet(false, true))
 		{
@@ -966,6 +988,8 @@ public class AsgardiansPlugin extends Plugin
 		String me = who != null ? who.getRsn() : null;
 		List<String> lines;
 		List<String> started;
+		/** Each a group and its title. */
+		List<Object[]> onScreen;
 		ClanData.GroupList before;
 		synchronized (groupLock)
 		{
@@ -973,7 +997,22 @@ public class AsgardiansPlugin extends Plugin
 			groups = now;
 			groupsFetchedAt = java.time.Instant.now();
 			lines = Groups.changes(before, now, me, leftGroupOnPurpose);
-			started = config.groupAlerts() ? Groups.started(before, now, me) : List.of();
+			Map<String, Boolean> choices = groupBells();
+			Map<String, Boolean> screens = groupScreens();
+			boolean alertsOn = config.groupAlerts();
+			boolean screenOn = config.groupOverlay();
+			started = new ArrayList<>();
+			onScreen = new ArrayList<>();
+			for (ClanData.Group g : Groups.startedGroups(before, now, me, id -> GroupBells.rings(activity(id), choices, alertsOn)))
+			{
+				ClanData.GroupActivity activity = activity(g.getActivity());
+				String title = Groups.shortTitle(g, activity);
+				started.add(Groups.startedLine(g, title));
+				if (GroupBells.onScreen(activity, choices, screens, alertsOn, screenOn))
+				{
+					onScreen.add(new Object[]{g, title});
+				}
+			}
 			if (before != null && before.getMine() != null && !before.getMine().equals(now.getMine()))
 			{
 				leftGroupOnPurpose = null;
@@ -988,6 +1027,11 @@ public class AsgardiansPlugin extends Plugin
 				{
 					lines.forEach(this::chat);
 					started.forEach(this::chat);
+					GroupAlertOverlay overlay = groupAlertOverlay;
+					if (overlay != null)
+					{
+						onScreen.forEach(o -> overlay.add((ClanData.Group) o[0], (String) o[1]));
+					}
 				}
 			});
 		}
@@ -1067,9 +1111,65 @@ public class AsgardiansPlugin extends Plugin
 		ClanData.Group mine = list != null ? list.mineGroup() : null;
 		String pass = partyService.getPartyPassphrase();
 		boolean inParty = mine != null && mine.getParty() != null && partyService.isInParty() && mine.getParty().trim().equals(pass);
+		GroupTabs.Bells bells = new GroupTabs.Bells(groupBells(), config.groupAlerts(),
+			Boolean.parseBoolean(configManager.getConfiguration(AsgardiansConfig.GROUP, GROUP_BELLS_OPEN_KEY)),
+			groupScreens(), config.groupOverlay());
 		GroupTabs.Input input = new GroupTabs.Input(list, groupActivities, groupsUnsupported, notConnected,
-			who != null ? who.getRsn() : null, onlineMembers(), inParty, groupBusy, groupsFetchedAt, java.time.ZoneId.systemDefault());
+			who != null ? who.getRsn() : null, onlineMembers(), inParty, groupBusy, groupsFetchedAt, java.time.ZoneId.systemDefault(),
+			bells);
 		SwingUtilities.invokeLater(() -> target.updateGroups(input));
+	}
+
+	// ---- group alert bells ----
+
+	/** The member's bells, saved as "id=1,id=0". Hidden from the settings panel; changed from the Groups tab. */
+	private static final String GROUP_BELLS_KEY = "groupBells";
+	private static final String GROUP_BELLS_OPEN_KEY = "groupBellsOpen";
+
+	private static final String GROUP_SCREENS_KEY = "groupScreens";
+
+	private Map<String, Boolean> groupScreens()
+	{
+		return GroupBells.parse(configManager.getConfiguration(AsgardiansConfig.GROUP, GROUP_SCREENS_KEY));
+	}
+
+	private Map<String, Boolean> groupBells()
+	{
+		return GroupBells.parse(configManager.getConfiguration(AsgardiansConfig.GROUP, GROUP_BELLS_KEY));
+	}
+
+	/** The activity with this ID, or one with no settings (alerts on by default) when the list doesn't have it. */
+	private ClanData.GroupActivity activity(String id)
+	{
+		for (ClanData.GroupActivity a : groupActivities)
+		{
+			if (a.getId() != null && a.getId().equals(id))
+			{
+				return a;
+			}
+		}
+		ClanData.GroupActivity unknown = new ClanData.GroupActivity();
+		unknown.setId(id);
+		return unknown;
+	}
+
+	/** Some new group would be announced, so it's worth checking for them more often. */
+	private boolean anyBellRings()
+	{
+		Map<String, Boolean> choices = groupBells();
+		boolean alertsOn = config.groupAlerts();
+		if (groupActivities.isEmpty())
+		{
+			return alertsOn;
+		}
+		for (ClanData.GroupActivity a : groupActivities)
+		{
+			if (GroupBells.rings(a, choices, alertsOn))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** The member's kill count for an activity, from RuneLite's own records, or null. */
@@ -1175,6 +1275,134 @@ public class AsgardiansPlugin extends Plugin
 		});
 	}
 
+	// ---- handeggs ----
+
+	/** Ice Barrage landing, the freeze sound. */
+	static final int EGG_SOUND = 171;
+	/** At most this many clan egg messages per check, so a burst doesn't flood chat. */
+	private static final int EGG_MESSAGES_MAX = 5;
+
+	@Subscribe
+	public void onAnimationChanged(AnimationChanged event)
+	{
+		Actor actor = event.getActor();
+		Player local = client.getLocalPlayer();
+		if (!(actor instanceof Player) || local == null || !EggTracker.isEggAnimation(actor.getAnimation()))
+		{
+			return;
+		}
+		EggTracker.Egg egg = eggs.animation(actor.getName(), actor.getAnimation(), client.getTickCount(), local.getName());
+		log.debug("Handegg animation {} by {} on tick {}: {}", actor.getAnimation(), actor.getName(), client.getTickCount(), egg);
+		if (egg != null)
+		{
+			onEgg(egg, local.getName());
+		}
+	}
+
+	/** The player egged someone, or was egged. Client thread. */
+	private void onEgg(EggTracker.Egg egg, String me)
+	{
+		boolean hit = DropRecorder.sameRsn(egg.getTarget(), me);
+		// Only eggs between clan members count: the player must be in the clan, and so must the other player.
+		String other = hit ? egg.getThrower() : egg.getTarget();
+		ClanSettings clan = client.getClanSettings();
+		if (!inClan() || !isClanMember(clan.getMembers(), other))
+		{
+			log.debug("Handegg with {} ignored: not a clan member", other);
+			return;
+		}
+		if (hit && config.eggSound())
+		{
+			// Their own sound effect volume, unless it's muted: they asked for the sound in the plugin settings.
+			int volume = client.getPreferences().getSoundEffectVolume();
+			client.playSoundEffect(EGG_SOUND, volume > 0 ? volume : net.runelite.api.SoundEffectVolume.MEDIUM_HIGH);
+		}
+		if (config.eggMessages())
+		{
+			chat(hit ? egg.getThrower() + " egged you!" : "You egged " + egg.getTarget() + "!");
+		}
+		long now = System.currentTimeMillis();
+		Record record = new Record(Record.Type.egg, java.time.Instant.ofEpochMilli(now).toString(), client.getWorld());
+		record.createdMillis = now;
+		record.setEgg(new Record.Egg(egg.getThrower(), egg.getTarget()));
+		submit(record, false);
+	}
+
+	/** Shows new eggings between other clan members in chat. Executor thread, every 30 seconds. */
+	private void fetchEggs()
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (key == null || !sharing || eggsUnsupported || !config.eggMessages() || !fetchingEggs.compareAndSet(false, true))
+		{
+			return;
+		}
+		String cursor = eggCursor;
+		okhttp3.HttpUrl url = ApiClient.endpoint(address, "eggs");
+		if (cursor != null)
+		{
+			url = url.newBuilder().addQueryParameter("after", cursor).build();
+		}
+		api.get(url, key, ClanData.EggFeed.class, result ->
+		{
+			fetchingEggs.set(false);
+			if (account == null || account.getHash() != who.getHash())
+			{
+				return;
+			}
+			if (!result.ok() || result.getBody().getCursor() == null)
+			{
+				// No such path (a JSON 404, or the website's own page with status 200): stop asking this session.
+				eggsUnsupported = result.getStatus() == 404 || (result.getStatus() >= 200 && result.getStatus() < 300);
+				return;
+			}
+			eggCursor = result.getBody().getCursor();
+			if (cursor == null)
+			{
+				return;
+			}
+			List<String> lines = eggLines(result.getBody().getEggs(), who.getRsn());
+			if (!lines.isEmpty())
+			{
+				clientThread.invokeLater(() -> lines.forEach(this::chat));
+			}
+		});
+	}
+
+	/** The name is on the clan's member list. Names are compared the same way as RSNs elsewhere. */
+	static boolean isClanMember(List<net.runelite.api.clan.ClanMember> members, String name)
+	{
+		for (net.runelite.api.clan.ClanMember member : ClanView.orEmpty(members))
+		{
+			if (member != null && DropRecorder.sameRsn(member.getName(), name))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Chat lines for clan eggings, leaving out the player's own (they already saw those). */
+	static List<String> eggLines(List<ClanData.EggAlert> alerts, String me)
+	{
+		List<String> lines = new ArrayList<>();
+		for (ClanData.EggAlert alert : ClanView.orEmpty(alerts))
+		{
+			if (alert == null || alert.getThrower() == null || alert.getTarget() == null
+				|| DropRecorder.sameRsn(alert.getThrower(), me) || DropRecorder.sameRsn(alert.getTarget(), me))
+			{
+				continue;
+			}
+			if (lines.size() == EGG_MESSAGES_MAX)
+			{
+				break;
+			}
+			lines.add(alert.getThrower() + " egged " + alert.getTarget() + "!");
+		}
+		return lines;
+	}
+
 	private GroupTabs.Actions groupActions()
 	{
 		return new GroupTabs.Actions()
@@ -1189,6 +1417,8 @@ public class AsgardiansPlugin extends Plugin
 				body.addProperty("mass", v.isMass());
 				body.addProperty("loot", v.getLoot());
 				body.addProperty("note", v.getNote());
+				body.addProperty("voice", v.isVoice());
+				body.addProperty("voiceLimit", v.isVoiceLimit());
 				body.addProperty("world", client.getWorld());
 				body.addProperty("kc", groupKc(v.getActivity().getId()));
 				// The website names the group's RuneLite party (ASG1, ASG2…); every member's plugin then joins it.
@@ -1200,6 +1430,42 @@ public class AsgardiansPlugin extends Plugin
 						target.groupStarted();
 					}
 				});
+			}
+
+			@Override
+			public void bell(String activityId, boolean on)
+			{
+				Map<String, Boolean> choices = groupBells();
+				choices.put(activityId, on);
+				configManager.setConfiguration(AsgardiansConfig.GROUP, GROUP_BELLS_KEY, GroupBells.format(choices));
+				refreshGroupsPanel();
+			}
+
+			@Override
+			public void joinVoice(ClanData.Group group)
+			{
+				String link = Groups.voiceLink(group);
+				if (link != null)
+				{
+					net.runelite.client.util.LinkBrowser.browse(link);
+				}
+			}
+
+			@Override
+			public void screen(String activityId, boolean on)
+			{
+				Map<String, Boolean> screens = groupScreens();
+				screens.put(activityId, on);
+				configManager.setConfiguration(AsgardiansConfig.GROUP, GROUP_SCREENS_KEY, GroupBells.format(screens));
+				refreshGroupsPanel();
+			}
+
+			@Override
+			public void foldBells()
+			{
+				boolean open = Boolean.parseBoolean(configManager.getConfiguration(AsgardiansConfig.GROUP, GROUP_BELLS_OPEN_KEY));
+				configManager.setConfiguration(AsgardiansConfig.GROUP, GROUP_BELLS_OPEN_KEY, !open);
+				refreshGroupsPanel();
 			}
 
 			@Override
@@ -2157,6 +2423,9 @@ public class AsgardiansPlugin extends Plugin
 				statsError = null;
 				statsFetchedAt = null;
 				lastStatsFetch = 0;
+				eggCursor = null;
+				eggsUnsupported = false;
+				eggs.clear();
 				groups = null;
 				groupActivities = List.of();
 				lastGroupsPoll = 0;
