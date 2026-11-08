@@ -316,6 +316,14 @@ class ApiClient
 			.delete().build(), ClanData.SignupResult.class, done);
 	}
 
+	/** POSTs a JSON body and reads the reply as {@code type}. */
+	<T> void post(HttpUrl url, String installKey, JsonObject body, Class<T> type, Consumer<GetResult<T>> done)
+	{
+		send(new Request.Builder().url(url)
+			.header(INSTALL_KEY_HEADER, installKey)
+			.post(RequestBody.create(JSON, gson.toJson(body))).build(), type, done);
+	}
+
 	private <T> void send(Request request, Class<T> type, Consumer<GetResult<T>> done)
 	{
 		http.newCall(request).enqueue(new Callback()

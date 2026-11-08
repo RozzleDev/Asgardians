@@ -35,6 +35,13 @@ final class ClanData
 		private List<LeaderboardRow> rows;
 		/** The member's own row; null when they aren't on this board. */
 		private LeaderboardRow me;
+		/**
+		 * Boss kills only: each boss's own board, so the page can drill from all bosses into one. Optional. Each has
+		 * the boss, its category and group (as on PB records), and its own rows and {@code me}.
+		 */
+		private List<BossBoard> bosses;
+		/** XP only: each skill's own board, so the page can drill from all skills into one. Optional. */
+		private List<SkillBoard> skills;
 
 		Instant ends()
 		{
@@ -57,6 +64,25 @@ final class ClanData
 			}
 			return me;
 		}
+	}
+
+	/** One skill's XP, inside the XP board. */
+	@Data
+	@lombok.EqualsAndHashCode(callSuper = true)
+	static class SkillBoard extends Leaderboard
+	{
+		/** e.g. "Slayer", as the game names it. */
+		private String skill;
+	}
+
+	/** One boss's kills, inside the Boss kills board. */
+	@Data
+	@lombok.EqualsAndHashCode(callSuper = true)
+	static class BossBoard extends Leaderboard
+	{
+		private String boss;
+		private String category;
+		private String group;
 	}
 
 	@Data
@@ -91,6 +117,17 @@ final class ClanData
 		private String kind;
 		/** Present when the event takes sign-ups. */
 		private Signup signup;
+		/** BOTW, SOTW and competitions: the member's own result so far, e.g. "14 kills" or "3.2M XP". Optional. */
+		private String myProgress;
+		private Integer myRank;
+		/** How many are taking part. Optional. */
+		private Integer participants;
+		/** The top of the competition, for the details page. Optional. */
+		private List<LeaderboardRow> standings;
+		/** e.g. "1st 50M · 2nd 25M · 3rd 10M". Optional. */
+		private String prizes;
+		/** The competition on Wise Old Man. Optional; only wiseoldman.net links are opened. */
+		private String womUrl;
 
 		boolean isLive()
 		{
@@ -139,6 +176,75 @@ final class ClanData
 		private Integer clogObtained;
 		private Integer pbs;
 		private Integer deaths;
+		/** Efficient hours bossed and played, from Wise Old Man via the website. Optional. */
+		private Double ehb;
+		private Double ehp;
+		/** How many collection log slots there are, for the progress bar. Optional. */
+		private Integer clogTotal;
+		/** The member's pets, newest first. Optional. */
+		private List<ProfileItem> pets;
+		/** Events the member took part in, newest first, e.g. "Autumn Bingo" with "Team Freya · 1st". Optional. */
+		private List<EventResult> events;
+		/** The member's best times. Optional. */
+		private List<StatEntry> personalBests;
+		/** What killed the member last, and when (ISO-8601). Optional. */
+		private String lastDeathBy;
+		private String lastDeathAt;
+		/** What has killed the member most. Optional. */
+		private String topKiller;
+		/** Handeggs thrown at and received from clanmates. Optional. */
+		private Integer eggsThrown;
+		private Integer eggsReceived;
+		/** Leaderboard places this month, e.g. "Drop value" #8 "612M". Optional; the plugin uses its own boards for you. */
+		private List<ProfileRank> rankings;
+
+		Instant lastDeath()
+		{
+			return parse(lastDeathAt);
+		}
+	}
+
+	@Data
+	static class ProfileItem
+	{
+		private Integer itemId;
+		private String name;
+	}
+
+	@Data
+	static class EventResult
+	{
+		private String name;
+		/** e.g. "Team Freya · 1st" or "4th · 3.2M XP". */
+		private String result;
+		/** The member's team won or placed first. */
+		private boolean won;
+	}
+
+	@Data
+	static class ProfileRank
+	{
+		private String board;
+		private Integer rank;
+		private String value;
+	}
+
+	/** GET /plugin/members/activity: what online clanmates are doing, for the Members page. */
+	@Data
+	static class MemberActivityList
+	{
+		private List<MemberActivity> members;
+	}
+
+	@Data
+	static class MemberActivity
+	{
+		private String rsn;
+		/** e.g. "Theatre of Blood", "Mining", "Grand Exchange"; null when they share nothing. */
+		private String activity;
+		private Integer world;
+		/** When it was last reported (ISO-8601). */
+		private String at;
 	}
 
 	@Data
@@ -246,6 +352,8 @@ final class ClanData
 	static class Board
 	{
 		private List<Tile> tiles;
+		/** How many tiles across, e.g. 7 for a 7-wide board. Optional: a square count of tiles needs none. */
+		private Integer columns;
 		private Integer done;
 		private Integer total;
 	}
@@ -423,6 +531,8 @@ final class ClanData
 		private Integer minSize;
 		private Integer maxSize;
 		private Integer defaultSize;
+		/** An item whose picture stands for the activity on group cards, e.g. Lil' Zik for ToB. Optional. */
+		private Integer iconItemId;
 		/** Offers 8+ even when maxSize is 8 or less (Nex, God Wars, Corp). */
 		private boolean mass;
 		/** Whether Split or FFA can be picked. */
@@ -624,12 +734,33 @@ final class ClanData
 		/** New PBs set in game (not chat commands or syncs). */
 		private List<StatEntry> pbs;
 		private List<StatEntry> pets;
+		/** The clan's best times for each boss and team size, for the PBs page. Optional. */
+		private List<PbRecord> records;
 
 		/** True when the website sent at least one list, so it knows about clan stats. */
 		boolean known()
 		{
 			return drops != null || drops1m != null || drops10m != null || drops100m != null || clogs != null || pbs != null || pets != null;
 		}
+	}
+
+	/** The clan's top times for one boss and team size. */
+	@Data
+	static class PbRecord
+	{
+		/** e.g. "Theatre of Blood". */
+		private String boss;
+		/**
+		 * The PBs page's first drop-down: Raids, Bosses, Skilling, Minigames, or any other name staff choose. When set,
+		 * it replaces the plugin's own sorting for this boss.
+		 */
+		private String category;
+		/** The second drop-down within the category, e.g. "Slayer" or "God Wars". Optional. */
+		private String group;
+		/** "1" for solo, or the team size. */
+		private String teamSize;
+		/** Fastest first. Each entry has rsn, seconds and at. */
+		private List<StatEntry> entries;
 	}
 
 	/** One line of a clan stats list. Drops, clogs and pets use the item fields; PBs use boss, teamSize and seconds. */

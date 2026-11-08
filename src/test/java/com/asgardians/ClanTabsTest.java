@@ -22,7 +22,8 @@ public class ClanTabsTest
 	{
 		// A member who never picked a period has none saved; this used to stop the plugin starting.
 		assertEquals(ClanTabs.MONTH, ClanTabs.period(null));
-		assertEquals(ClanTabs.MONTH, ClanTabs.period("week"));
+		assertEquals(ClanTabs.MONTH, ClanTabs.period("fortnight"));
+		assertEquals(ClanTabs.WEEK, ClanTabs.period("week"));
 		assertEquals(ClanTabs.YEAR, ClanTabs.period("year"));
 		assertEquals(ClanTabs.ALL, ClanTabs.period("all"));
 	}

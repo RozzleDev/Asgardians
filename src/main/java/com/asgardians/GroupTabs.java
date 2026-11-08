@@ -321,8 +321,10 @@ final class GroupTabs
 	private static Card mineCard(ClanData.Group g, Input in, Actions actions)
 	{
 		boolean host = DropRecorder.sameRsn(g.getHost(), in.getMe());
-		Card card = new Card("Your group: " + g.getTitle());
-		card.add(small(details(g), g.isFull() ? GOOD : TEXT));
+		Card card = new Card(null).outlined(PanelParts.HIGHLIGHT, PanelParts.CARD);
+		card.add(PanelParts.section("Your group"));
+		card.add(Box.createVerticalStrut(3));
+		card.addWide(header(g, in));
 		if (g.getNote() != null && !g.getNote().trim().isEmpty())
 		{
 			card.add(small(g.getNote(), QUIET));
@@ -395,11 +397,11 @@ final class GroupTabs
 	/** Another member's group, with a Join button. */
 	private static Card groupCard(ClanData.Group g, boolean inAGroup, Input in, Actions actions)
 	{
-		Card card = new Card(g.getTitle());
-		card.add(small((g.getHost() != null ? "Host: " + g.getHost() + " · " : "") + details(g), TEXT));
+		Card card = new Card(null);
+		card.addWide(header(g, in));
 		if (g.getNote() != null && !g.getNote().trim().isEmpty())
 		{
-			card.add(small(g.getNote(), QUIET));
+			card.add(small(g.getNote(), TEXT));
 		}
 		if (g.getParty() != null && !g.getParty().trim().isEmpty())
 		{
@@ -433,6 +435,60 @@ final class GroupTabs
 		}
 		card.addWide(buttons);
 		return card;
+	}
+
+	/**
+	 * A group's top: the activity's picture, its title with a seats badge, then the host, world (green when it's the
+	 * member's own) and loot rules.
+	 */
+	static JPanel header(ClanData.Group g, Input in)
+	{
+		JPanel row = new JPanel(new java.awt.BorderLayout(7, 0));
+		row.setOpaque(false);
+		ClanData.GroupActivity activity = activity(g, in.getActivities());
+		row.add(PanelParts.itemBox(activity != null ? activity.getIconItemId() : null, 32), java.awt.BorderLayout.WEST);
+		JPanel words = PanelParts.column();
+		JPanel title = new JPanel(new java.awt.BorderLayout(5, 0));
+		title.setOpaque(false);
+		title.add(PanelParts.bold(Groups.shortTitle(g, activity), TEXT), java.awt.BorderLayout.CENTER);
+		int have = ClanView.orEmpty(g.getMembers()).size();
+		boolean nearlyFull = g.getSize() != null && have >= g.getSize() - 1;
+		title.add(PanelParts.tag(g.seats(), g.isFull() ? QUIET : nearlyFull ? PanelParts.HIGHLIGHT : GOOD), java.awt.BorderLayout.EAST);
+		title.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+		words.add(title);
+		Integer mine = in.getMe() != null ? in.getOnline().get(in.getMe().toLowerCase(Locale.UK)) : null;
+		JPanel line = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+		line.setOpaque(false);
+		if (g.getHost() != null)
+		{
+			line.add(PanelParts.plain(g.getHost() + " · ", QUIET));
+		}
+		if (g.getWorld() != null)
+		{
+			line.add(PanelParts.plain("W" + g.getWorld(), g.getWorld().equals(mine) ? GOOD : QUIET));
+		}
+		String loot = "ffa".equalsIgnoreCase(g.getLoot()) ? " · FFA" : "split".equalsIgnoreCase(g.getLoot()) ? " · Split" : "";
+		if (!loot.isEmpty())
+		{
+			line.add(PanelParts.plain(loot, QUIET));
+		}
+		line.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+		words.add(line);
+		row.add(words, java.awt.BorderLayout.CENTER);
+		return row;
+	}
+
+	/** The activity a group is for, from the website's list. */
+	static ClanData.GroupActivity activity(ClanData.Group g, List<ClanData.GroupActivity> activities)
+	{
+		for (ClanData.GroupActivity a : ClanView.orEmpty(activities))
+		{
+			if (a != null && a.getId() != null && a.getId().equals(g.getActivity()))
+			{
+				return a;
+			}
+		}
+		return null;
 	}
 
 	/** "3/5 · W416 · Split". */

@@ -62,6 +62,18 @@ public interface AsgardiansConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "shareActivity",
+		name = "Share my activity",
+		description = "Show clanmates on the Members page what you're doing: a raid, a boss, a skill or the Grand Exchange. Worked out from your own game only. While this is off, they see you as Online with your world.",
+		position = 0,
+		section = sharingSection
+	)
+	default boolean shareActivity()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "shareDeaths",
 		name = "Share my deaths",
 		description = "Send your deaths to the clan website. While this is off, new deaths aren't recorded and won't count on the leaderboard.",

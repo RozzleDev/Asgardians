@@ -18,7 +18,36 @@ class Record
 		clog,
 		pb,
 		death,
-		egg
+		egg,
+		/** A kill count message, for total KC and KC bingo tasks. */
+		kc,
+		/** The member's XP in each skill, for XP bingo tasks and leaderboards. */
+		xp,
+		/** A finished quest speedrun, for medal bingo tasks. */
+		speedrun
+	}
+
+	/** Kc records: the kill's own time, when the game showed one (a PB or not). */
+	@Data
+	static class KillTime
+	{
+		private final double seconds;
+		/** Game ticks, when precise timing is on. */
+		private final Integer ticks;
+		private final boolean precise;
+		/** "1" for solo, "2"…"8", "11-15", "24+"; null when unknown. */
+		private final String teamSize;
+	}
+
+	/** Speedrun records: the quest, the run's time and the member's best, in seconds. */
+	@Data
+	static class Speedrun
+	{
+		private final String quest;
+		private final Double seconds;
+		private final Double bestSeconds;
+		/** The game said this run was a new personal best. */
+		private final boolean personalBest;
 	}
 
 	/** Egg records: a handegg thrown by one player and caught by another. One of them is the player. */
@@ -75,6 +104,16 @@ class Record
 	/** Egg records. */
 	private Egg egg;
 
+	/** XP records: XP by skill name ("Attack", ...), and the total. */
+	private java.util.Map<String, Integer> xp;
+	private Long totalXp;
+
+	/** Speedrun records. */
+	private Speedrun speedrun;
+
+	/** Kc records: the kill's time, when the game showed one. */
+	private KillTime time;
+
 	/** True when a screenshot is uploaded with this record. */
 	private boolean screenshot;
 
@@ -97,6 +136,12 @@ class Record
 				return "PB: " + (pb != null ? pb.display() : "");
 			case egg:
 				return egg == null ? "Egg" : "Egg: " + egg.getThrower() + " egged " + egg.getTarget();
+			case kc:
+				return "KC: " + (source != null ? source.getName() + " " + source.getKc() : "");
+			case xp:
+				return "XP: " + (totalXp != null ? String.format("%,d", totalXp) + " total" : "");
+			case speedrun:
+				return "Speedrun: " + (speedrun != null ? speedrun.getQuest() : "");
 			case death:
 				if (death == null || death.getKiller() == null || death.getKiller().getName() == null)
 				{

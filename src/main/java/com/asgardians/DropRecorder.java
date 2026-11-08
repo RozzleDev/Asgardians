@@ -163,7 +163,7 @@ class DropRecorder
 		return null;
 	}
 
-	private static Record newRecord(Record.Type type, int world, long now)
+	static Record newRecord(Record.Type type, int world, long now)
 	{
 		Record record = new Record(type, Instant.ofEpochMilli(now).toString(), world);
 		record.createdMillis = now;

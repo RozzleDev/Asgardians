@@ -35,6 +35,8 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.InteractingChanged;
+import net.runelite.api.events.StatChanged;
+import net.runelite.api.Skill;
 import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.ScriptPreFired;
 import net.runelite.api.MenuAction;
@@ -126,6 +128,9 @@ public class AsgardiansPlugin extends Plugin
 	@Inject
 	private net.runelite.client.game.SpriteManager spriteManager;
 
+	@Inject
+	private net.runelite.client.game.SkillIconManager skillIconManager;
+
 	/** RuneLite's hiscore bosses, by name, for the Stats tab's PB icons. */
 	private static final Map<String, net.runelite.client.hiscore.HiscoreSkill> HISCORE_BOSSES = hiscoreBosses();
 
@@ -214,7 +219,7 @@ public class AsgardiansPlugin extends Plugin
 	private volatile long lastClanFetch;
 	/** The member's clan profile for the Connection card. */
 	private volatile ClanData.Me me;
-	/** Leaderboards by period (ClanTabs.MONTH, YEAR, ALL). */
+	/** Leaderboards by period (ClanTabs.WEEK, MONTH, YEAR, ALL). */
 	private final Map<String, List<ClanData.Leaderboard>> leaderboards = new java.util.concurrent.ConcurrentHashMap<>();
 	/** Chat icons reserved for team badges, one per team slot, and what each currently shows. */
 	private final int[] badgeIcons = new int[TeamBadges.MAX_TEAMS];
@@ -411,6 +416,72 @@ public class AsgardiansPlugin extends Plugin
 					AsgardiansPlugin.this.chooseTile(event, drop, tile);
 				}
 			}, groupActions(), statsActions());
+		PanelParts.setItemIcons((itemId, done) ->
+		{
+			net.runelite.client.util.AsyncBufferedImage img = itemManager.getImage(itemId);
+			img.onLoaded(() -> SwingUtilities.invokeLater(() -> done.accept(img)));
+			SwingUtilities.invokeLater(() -> done.accept(img));
+		});
+		panel.loadTilePictures(new AsgardiansPanel.GamePictures()
+		{
+			@Override
+			public void item(int itemId, int quantity, java.util.function.Consumer<BufferedImage> done)
+			{
+				net.runelite.client.util.AsyncBufferedImage img = itemManager.getImage(itemId, quantity, false);
+				img.onLoaded(() -> SwingUtilities.invokeLater(() -> done.accept(img)));
+				SwingUtilities.invokeLater(() -> done.accept(img));
+			}
+
+			@Override
+			public void sprite(int spriteId, java.util.function.Consumer<BufferedImage> done)
+			{
+				spriteManager.getSpriteAsync(spriteId, 0, sprite -> SwingUtilities.invokeLater(() -> done.accept(sprite)));
+			}
+		});
+		PanelParts.setEventIcons((event, done) ->
+		{
+			switch (ClanView.group(event))
+			{
+				case "bingo":
+					java.awt.image.BufferedImage grid = AsgardiansPanel.resource("tile_bingo.png");
+					if (grid != null)
+					{
+						done.accept(grid);
+					}
+					break;
+				case "botw":
+					String boss = bossIn(event.getName());
+					if (boss != null)
+					{
+						spriteManager.getSpriteAsync(HISCORE_BOSSES.get(boss).getSpriteId(), 0,
+							sprite -> SwingUtilities.invokeLater(() -> done.accept(sprite)));
+					}
+					break;
+				case "sotw":
+					Skill skill = skillIn(event.getName());
+					if (skill != null)
+					{
+						done.accept(skillIconManager.getSkillImage(skill, false));
+					}
+					break;
+				default:
+					net.runelite.client.util.AsyncBufferedImage hat = itemManager.getImage(net.runelite.api.gameval.ItemID.RED_PARTYHAT);
+					hat.onLoaded(() -> SwingUtilities.invokeLater(() -> done.accept(hat)));
+					done.accept(hat);
+			}
+		});
+		PanelParts.setSkillIcons((label, name) ->
+		{
+			for (Skill skill : Skill.values())
+			{
+				if (skill.getName().equalsIgnoreCase(name))
+				{
+					label.setIcon(new javax.swing.ImageIcon(skillIconManager.getSkillImage(skill, false)));
+				}
+			}
+		});
+		panel.setProfileLoader(rsn -> executor.execute(() -> fetchProfile(rsn)));
+		panel.setMembersRefresh(() -> executor.execute(this::fetchMemberActivity));
 		navButton = NavigationButton.builder()
 			.tooltip("Asgardians Clan")
 			.icon(AsgIcon.create(16))
@@ -455,6 +526,9 @@ public class AsgardiansPlugin extends Plugin
 		}
 		navButton = null;
 		panel = null;
+		PanelParts.setItemIcons(null);
+		PanelParts.setEventIcons(null);
+		PanelParts.setSkillIcons(null);
 	}
 
 	/** The address every API call should use. */
@@ -474,6 +548,12 @@ public class AsgardiansPlugin extends Plugin
 		}
 		else if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
+			// Anything waiting goes now; XP and activity start again for whoever logs in next.
+			sendPendingKcs(true);
+			xpSentTick = -1;
+			xpSentTotal = -1;
+			lastXp.clear();
+			myActivity = null;
 			loginNewsPending = true;
 			executor.execute(this::flush);
 			refreshPanel();
@@ -507,6 +587,11 @@ public class AsgardiansPlugin extends Plugin
 		{
 			status = null;
 			executor.execute(this::fetchSettings);
+		}
+		if ("shareActivity".equals(event.getKey()))
+		{
+			executor.execute(this::sendActivity);
+			refreshClanPanel();
 		}
 		if ("groupAlerts".equals(event.getKey()) || "groupOverlay".equals(event.getKey()))
 		{
@@ -576,6 +661,11 @@ public class AsgardiansPlugin extends Plugin
 		{
 			// Raid completion messages arrive as FRIENDSCHATNOTIFICATION.
 			pbs.chatMessage(message, now);
+			ChatParsers.KillTime time = ChatParsers.killTime(message);
+			if (time != null)
+			{
+				rememberKillTime(time);
+			}
 		}
 		if (type == ChatMessageType.GAMEMESSAGE || type == ChatMessageType.SPAM)
 		{
@@ -588,6 +678,16 @@ public class AsgardiansPlugin extends Plugin
 			if (kc != null)
 			{
 				recorder.killCount(kc, now);
+				if (!progressAccepted())
+				{
+					return;
+				}
+				Record kcRecord = DropRecorder.newRecord(Record.Type.kc, client.getWorld(), now);
+				Record.Source source = new Record.Source(kc.getSource(), null);
+				source.setKc(kc.getCount());
+				kcRecord.setSource(source);
+				// The kill's time may come just before or just after the kill count, so wait a moment for it.
+				pendingKcs.add(new PendingKc(kcRecord, client.getTickCount(), instanceTeamSize()));
 				return;
 			}
 			ChatParsers.PetMessage pet = ChatParsers.pet(message);
@@ -654,11 +754,16 @@ public class AsgardiansPlugin extends Plugin
 			refreshClan(true);
 		}
 		AsgardiansPanel shown = panel;
-		if (shown != null && shown.statsShown() && now - lastStatsFetch >= STATS_SHOWN_MILLIS)
+		// Every few minutes even while closed, so the Home tiles for Drops and PBs have something to show.
+		if (now - lastStatsFetch >= (shown != null && shown.statsShown() ? STATS_SHOWN_MILLIS : STATS_IDLE_MILLIS))
 		{
 			fetchStats();
 		}
 		fetchEggs();
+		if ((shown != null && shown.membersShown()) || now - lastActivityFetch >= ACTIVITY_IDLE_MILLIS)
+		{
+			fetchMemberActivity();
+		}
 		clientThread.invokeLater(() ->
 		{
 			sendReminders();
@@ -883,6 +988,8 @@ public class AsgardiansPlugin extends Plugin
 				? "Clan stats load once you're in the Asgardians clan with \"Share my data with Asgardians\" ticked."
 				: "Connecting…",
 			statsError, statsFetchedAt, java.time.Instant.now(), java.time.ZoneId.systemDefault());
+		MembersTabs.Input membersInput = membersInput(notConnected == null ? null
+			: who == null || client.getGameState() != GameState.LOGGED_IN ? "Log in to see who's online." : notConnected);
 		AsgardiansPanel target = panel;
 		if (target != null)
 		{
@@ -890,6 +997,7 @@ public class AsgardiansPlugin extends Plugin
 			{
 				target.updateClan(input);
 				target.updateStats(statsInput);
+				target.updateMembers(membersInput);
 			});
 		}
 	}
@@ -1233,6 +1341,8 @@ public class AsgardiansPlugin extends Plugin
 	private static final long STATS_OPENED_MILLIS = 30_000;
 	/** While the Stats tab is open, its lists reload this often. */
 	private static final long STATS_SHOWN_MILLIS = 60_000;
+	/** Otherwise they reload this often, for the Home tiles. */
+	private static final long STATS_IDLE_MILLIS = 5 * 60_000;
 
 	/** Loads the clan's latest drops, clogs, PBs and pets. Executor thread. */
 	private void fetchStats()
@@ -1749,7 +1859,237 @@ public class AsgardiansPlugin extends Plugin
 		if (event.getSource() == client.getLocalPlayer() && event.getTarget() != null)
 		{
 			lastTarget = new WeakReference<>(event.getTarget());
+			if (event.getTarget() instanceof NPC && event.getTarget().getName() != null)
+			{
+				activityTarget = Text.removeTags(event.getTarget().getName());
+				activityTargetTick = client.getTickCount();
+			}
 		}
+	}
+
+	/** The hiscore boss named in an event's name ("BOTW: Vorkath" gives Vorkath), longest match first. */
+	static String bossIn(String eventName)
+	{
+		String name = eventName != null ? eventName.toLowerCase(java.util.Locale.UK) : "";
+		String best = null;
+		for (String boss : HISCORE_BOSSES.keySet())
+		{
+			if (name.contains(boss.toLowerCase(java.util.Locale.UK)) && (best == null || boss.length() > best.length()))
+			{
+				best = boss;
+			}
+		}
+		return best;
+	}
+
+	/** The skill named in an event's name ("SOTW: Slayer" gives Slayer). */
+	static Skill skillIn(String eventName)
+	{
+		String name = eventName != null ? eventName.toLowerCase(java.util.Locale.UK) : "";
+		for (Skill skill : Skill.values())
+		{
+			if (!"Overall".equals(skill.getName()) && name.contains(skill.getName().toLowerCase(java.util.Locale.UK)))
+			{
+				return skill;
+			}
+		}
+		return null;
+	}
+
+	// ---- activity, for the Members page ----
+
+	/** Skills whose XP only comes from fighting, so they don't count as skilling. */
+	private static final Set<Skill> COMBAT_SKILLS = EnumSet.of(Skill.ATTACK, Skill.STRENGTH, Skill.DEFENCE, Skill.HITPOINTS, Skill.RANGED);
+	/** Work out the activity this often, in game ticks. */
+	private static final int ACTIVITY_TICKS = 10;
+	/** Send the activity at least this often while it stays the same, so the website knows the member's still there. */
+	private static final long ACTIVITY_RESEND_MILLIS = 60_000;
+	/** After the website says it has no activity feed, try again this much later. */
+	private static final long ACTIVITY_RETRY_MILLIS = 30 * 60_000;
+	/** Load clanmates' activities this often while the Members page is closed. */
+	private static final long ACTIVITY_IDLE_MILLIS = 120_000;
+	private String activityTarget;
+	private int activityTargetTick = -1;
+	private String activitySkill;
+	private int activitySkillTick = -1;
+	private final Map<Skill, Integer> lastXp = new java.util.EnumMap<>(Skill.class);
+	/** What the member is doing, worked out on the client thread. */
+	private volatile String myActivity;
+	private volatile String sentActivity;
+	private volatile boolean sentSharing = true;
+	private volatile long sentActivityAt;
+	private volatile boolean activityUnsupported;
+	private volatile long activityUnsupportedUntil;
+	private volatile long lastActivityFetch;
+	/** Clanmates' activities from the website: lowercase RSN to activity. */
+	private volatile Map<String, String> memberActivities = Map.of();
+	private final AtomicBoolean fetchingActivity = new AtomicBoolean();
+
+	@Subscribe
+	public void onStatChanged(StatChanged event)
+	{
+		Integer before = lastXp.put(event.getSkill(), event.getXp());
+		if (before != null && event.getXp() > before && !COMBAT_SKILLS.contains(event.getSkill()))
+		{
+			activitySkill = event.getSkill().getName();
+			activitySkillTick = client.getTickCount();
+		}
+	}
+
+	/** Every few ticks: what the member is doing now. Client thread. */
+	private void updateActivity(Player local)
+	{
+		int tick = client.getTickCount();
+		if (tick % ACTIVITY_TICKS != 0)
+		{
+			return;
+		}
+		Actor target = local.getInteracting();
+		if (target instanceof NPC && target.getName() != null)
+		{
+			activityTarget = Text.removeTags(target.getName());
+			activityTargetTick = tick;
+		}
+		Widget bank = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
+		WorldPoint where = local.getLocalLocation() != null ? WorldPoint.fromLocalInstance(client, local.getLocalLocation()) : null;
+		myActivity = ActivityTracker.describe(new ActivityTracker.Snapshot(tick,
+			client.getVarbitValue(VarbitID.RAIDS_CLIENT_INDUNGEON) == 1,
+			client.getVarbitValue(VarbitID.TOB_CLIENT_PARTYSTATUS) >= 2,
+			activityTarget, activityTargetTick, client.getVarpValue(VarPlayerID.SLAYER_COUNT),
+			activitySkill, activitySkillTick, bank != null && !bank.isHidden(), where != null ? where.getRegionID() : -1));
+		executor.execute(this::sendActivity);
+	}
+
+	/** Tells the website what the member is doing, when it changed or a minute has passed. Executor thread. */
+	private void sendActivity()
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		long now = System.currentTimeMillis();
+		if (key == null || !sharing || (activityUnsupported && now < activityUnsupportedUntil))
+		{
+			return;
+		}
+		boolean share = config.shareActivity();
+		String activity = share ? myActivity : null;
+		if (java.util.Objects.equals(activity, sentActivity) && share == sentSharing && now - sentActivityAt < ACTIVITY_RESEND_MILLIS)
+		{
+			return;
+		}
+		sentActivity = activity;
+		sentSharing = share;
+		sentActivityAt = now;
+		com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+		body.addProperty("sharing", share);
+		body.addProperty("activity", activity);
+		body.addProperty("world", client.getWorld());
+		api.post(ApiClient.endpoint(address, "members/activity"), key, body, com.google.gson.JsonObject.class, result ->
+		{
+			if (result.getStatus() == 404)
+			{
+				activityUnsupported = true;
+				activityUnsupportedUntil = System.currentTimeMillis() + ACTIVITY_RETRY_MILLIS;
+			}
+		});
+	}
+
+	/** Loads what clanmates are doing. Executor thread. */
+	private void fetchMemberActivity()
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (key == null || !sharing || !fetchingActivity.compareAndSet(false, true))
+		{
+			return;
+		}
+		lastActivityFetch = System.currentTimeMillis();
+		api.get(ApiClient.endpoint(address, "members/activity"), key, ClanData.MemberActivityList.class, result ->
+		{
+			fetchingActivity.set(false);
+			if (account == null || account.getHash() != who.getHash())
+			{
+				return;
+			}
+			if (result.ok() && result.getBody().getMembers() != null)
+			{
+				Map<String, String> map = new java.util.HashMap<>();
+				for (ClanData.MemberActivity m : result.getBody().getMembers())
+				{
+					if (m != null && m.getRsn() != null && m.getActivity() != null)
+					{
+						map.put(Text.sanitize(m.getRsn()).toLowerCase(java.util.Locale.UK), m.getActivity());
+					}
+				}
+				memberActivities = map;
+				activityUnsupported = false;
+			}
+			else if (result.getStatus() == 404 || (result.getStatus() >= 200 && result.getStatus() < 300))
+			{
+				activityUnsupported = true;
+				activityUnsupportedUntil = System.currentTimeMillis() + ACTIVITY_RETRY_MILLIS;
+			}
+			refreshClanPanel();
+		});
+	}
+
+	/** Loads a clanmate's profile for the panel. Executor thread. */
+	private void fetchProfile(String rsn)
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		AsgardiansPanel target = panel;
+		if (key == null || !sharing || target == null)
+		{
+			if (target != null)
+			{
+				SwingUtilities.invokeLater(() -> target.updateProfile(rsn, null, false));
+			}
+			return;
+		}
+		api.get(ApiClient.endpoint(address, "members/" + rsn.replace('\u00a0', ' ') + "/profile"), key, ClanData.Me.class, result ->
+		{
+			boolean ok = result.ok() && result.getBody() != null && (result.getBody().getRank() != null
+				|| result.getBody().getDaysInClan() != null || result.getBody().getRsn() != null);
+			boolean unsupported = !ok && (result.getStatus() == 404 || (result.getStatus() >= 200 && result.getStatus() < 300));
+			SwingUtilities.invokeLater(() -> target.updateProfile(rsn, ok ? result.getBody() : null, unsupported));
+		});
+	}
+
+	/** Who's in the clan: online members with their world, the rest offline, with activities where known. Client thread. */
+	private MembersTabs.Input membersInput(String notConnected)
+	{
+		Player local = client.getLocalPlayer();
+		String me = local != null && local.getName() != null ? Text.sanitize(local.getName()) : null;
+		if (notConnected != null)
+		{
+			return new MembersTabs.Input(List.of(), me, null, null, config.shareActivity(), activityUnsupported, notConnected);
+		}
+		Map<String, String> activities = memberActivities;
+		Map<String, MembersTabs.Member> members = new LinkedHashMap<>();
+		net.runelite.api.clan.ClanChannel channel = client.getClanChannel();
+		if (channel != null)
+		{
+			for (net.runelite.api.clan.ClanChannelMember m : channel.getMembers())
+			{
+				String name = Text.sanitize(m.getName());
+				String lower = name.toLowerCase(java.util.Locale.UK);
+				members.put(lower, new MembersTabs.Member(name, m.getWorld(), activities.get(lower)));
+			}
+		}
+		ClanSettings settings = client.getClanSettings();
+		if (settings != null)
+		{
+			for (net.runelite.api.clan.ClanMember m : settings.getMembers())
+			{
+				String name = Text.sanitize(m.getName());
+				members.putIfAbsent(name.toLowerCase(java.util.Locale.UK), new MembersTabs.Member(name, null, null));
+			}
+		}
+		return new MembersTabs.Input(new ArrayList<>(members.values()), me, client.getWorld(), myActivity, config.shareActivity(),
+			activityUnsupported, null);
 	}
 
 	@Subscribe
@@ -1962,7 +2302,173 @@ public class AsgardiansPlugin extends Plugin
 			case InterfaceID.JOURNALSCROLL:
 				scrollLoaded = true;
 				break;
+			case InterfaceID.QUESTSCROLL_SPEEDRUN:
+				recordSpeedrun();
+				break;
 		}
+	}
+
+	/**
+	 * A quest speedrun has finished: the game shows the quest, the run's time and the member's best. Speedrunning
+	 * worlds are otherwise left out of recording, so this is the one record sent from them.
+	 */
+	private void recordSpeedrun()
+	{
+		Widget title = client.getWidget(InterfaceID.QuestscrollSpeedrun.QUEST_TITLE);
+		Widget time = client.getWidget(InterfaceID.QuestscrollSpeedrun.TIME_TEXT);
+		Widget best = client.getWidget(InterfaceID.QuestscrollSpeedrun.BEST_TEXT);
+		if (title == null || time == null || !config.shareData() || settings.isKillSwitch() || !inClan() || !progressAccepted())
+		{
+			return;
+		}
+		String quest = ChatParsers.speedrunQuest(title.getText());
+		Double seconds = ChatParsers.runTime(time.getText());
+		Double bestSeconds = best != null ? ChatParsers.runTime(best.getText()) : null;
+		if (quest == null || seconds == null)
+		{
+			return;
+		}
+		Record record = DropRecorder.newRecord(Record.Type.speedrun, client.getWorld(), System.currentTimeMillis());
+		record.setSpeedrun(new Record.Speedrun(quest, seconds, bestSeconds, bestSeconds != null && seconds <= bestSeconds));
+		submit(record, true);
+	}
+
+	/** Records the website may not take yet. */
+	private static final Set<Record.Type> PROGRESS_TYPES = EnumSet.of(Record.Type.kc, Record.Type.xp, Record.Type.speedrun);
+	/** After the website refuses one, wait this long before making them again. */
+	private static final long PROGRESS_RETRY_MILLIS = 30 * 60_000;
+	private volatile long progressPausedUntil;
+
+	/** KC, XP and speedrun records are being made: the website hasn't refused one lately. */
+	private boolean progressAccepted()
+	{
+		return System.currentTimeMillis() >= progressPausedUntil;
+	}
+
+	// ---- kill times on kc records ----
+
+	/** A kill count and its time are paired when they come within this many game ticks of each other. */
+	static final int KILL_TIME_TICKS = 3;
+
+	/** A kc record waiting a moment for its kill's time. */
+	@lombok.Value
+	private static class PendingKc
+	{
+		Record record;
+		int tick;
+		/** The instance's player count as a team size, or null outside an instance. */
+		String teamSize;
+	}
+
+	private final List<PendingKc> pendingKcs = new ArrayList<>();
+	private ChatParsers.KillTime lastKillTime;
+	private int lastKillTimeTick = -100;
+
+	/** Remembers the latest kill time; a whole raid's time isn't replaced by a room's from the same moment. Client thread. */
+	private void rememberKillTime(ChatParsers.KillTime time)
+	{
+		int tick = client.getTickCount();
+		boolean recentTotal = lastKillTime != null && lastKillTime.isTotal() && tick - lastKillTimeTick <= KILL_TIME_TICKS;
+		if (recentTotal && !time.isTotal())
+		{
+			return;
+		}
+		lastKillTime = time;
+		lastKillTimeTick = tick;
+	}
+
+	/** Sends kc records once their moment to pick up a time has passed (or all of them, when leaving). Client thread. */
+	private void sendPendingKcs(boolean all)
+	{
+		int tick = client.getTickCount();
+		for (java.util.Iterator<PendingKc> it = pendingKcs.iterator(); it.hasNext(); )
+		{
+			PendingKc p = it.next();
+			if (!all && tick - p.getTick() < KILL_TIME_TICKS)
+			{
+				continue;
+			}
+			it.remove();
+			ChatParsers.KillTime time = lastKillTime;
+			String boss = p.getRecord().getSource().getName();
+			if (time != null && Math.abs(lastKillTimeTick - p.getTick()) <= KILL_TIME_TICKS && fits(boss, time))
+			{
+				PersonalBest asPb = PersonalBest.of(boss, time.getSeconds());
+				String size = time.getTeamSize() != null ? time.getTeamSize() : p.getTeamSize();
+				p.getRecord().setTime(new Record.KillTime(time.getSeconds(), asPb.getTicks(), asPb.isPrecise(), size));
+				// One time belongs to one kill.
+				lastKillTime = null;
+			}
+			submit(p.getRecord(), false);
+		}
+	}
+
+	/** A TzHaar-Ket-Rak challenge time never counts for TzTok-Jad (the full Fight Cave). */
+	static boolean fits(String boss, ChatParsers.KillTime time)
+	{
+		return !(time.isChallenge() && boss != null && boss.equalsIgnoreCase("TzTok-Jad"));
+	}
+
+	/** In an instance, how many players are in it, as a team size ("1", "4", "11-15"); null outside one. */
+	private String instanceTeamSize()
+	{
+		WorldView view = client.getTopLevelWorldView();
+		if (view == null || !view.isInstance())
+		{
+			return null;
+		}
+		return teamSize(partySize());
+	}
+
+	/** A player count as PB team sizes write it. */
+	static String teamSize(int players)
+	{
+		if (players <= 10)
+		{
+			return String.valueOf(Math.max(1, players));
+		}
+		return players <= 15 ? "11-15" : players <= 23 ? "16-23" : "24+";
+	}
+
+	/** Send the member's XP this often while it changes, in game ticks (about 10 minutes). */
+	private static final int XP_TICKS = 1000;
+	private int xpSentTick = -1;
+	private long xpSentTotal = -1;
+
+	/** Shortly after login, then every ten minutes while it changes: the member's XP in each skill. Client thread. */
+	private void maybeSendXp()
+	{
+		int tick = client.getTickCount();
+		if (xpSentTick < 0)
+		{
+			// Wait a few ticks after login for the skills to arrive.
+			xpSentTick = tick - XP_TICKS + 10;
+			return;
+		}
+		if (tick - xpSentTick < XP_TICKS || !isRecording() || !progressAccepted())
+		{
+			return;
+		}
+		long total = client.getOverallExperience();
+		xpSentTick = tick;
+		if (total <= 0 || total == xpSentTotal)
+		{
+			return;
+		}
+		xpSentTotal = total;
+		Map<String, Integer> xp = new LinkedHashMap<>();
+		for (Skill skill : Skill.values())
+		{
+			if (!"Overall".equals(skill.getName()))
+			{
+				xp.put(skill.getName(), client.getSkillExperience(skill));
+			}
+		}
+		Record record = DropRecorder.newRecord(Record.Type.xp, client.getWorld(), System.currentTimeMillis());
+		record.setXp(xp);
+		record.setTotalXp(total);
+		// Through submit, so it shows under Recent submissions straight away.
+		submit(record, false);
 	}
 
 	/**
@@ -2026,6 +2532,9 @@ public class AsgardiansPlugin extends Plugin
 		{
 			return;
 		}
+		updateActivity(local);
+		maybeSendXp();
+		sendPendingKcs(false);
 		Map<Integer, Integer> captured = clogCapture.finishIfQuiet(client.getTickCount());
 		if (captured != null && captured.equals(lastClogCapture))
 		{
@@ -2624,11 +3133,17 @@ public class AsgardiansPlugin extends Plugin
 			{
 				// The server refused the batch. Retry its records one by one so only the bad one is dropped.
 				log.warn("Asgardians rejected {} record(s) ({}): {}", batch.size(), result.getStatus(), result.getError());
+				boolean progress = batch.size() == 1 && PROGRESS_TYPES.contains(batch.get(0).getType());
+				if (progress)
+				{
+					// A website that doesn't take KC, XP or speedrun records yet: stop making them for a while.
+					progressPausedUntil = System.currentTimeMillis() + PROGRESS_RETRY_MILLIS;
+				}
 				if (queue.rejected(batch, result.getError()))
 				{
 					executor.execute(this::flush);
 				}
-				else
+				else if (!progress)
 				{
 					setStatus("The server rejected a record: " + result.getError(), true);
 				}

@@ -35,7 +35,7 @@ public class AsgardiansPanelTest
 	public void opensWithOddSavedChoices()
 	{
 		Map<String, String> saved = new HashMap<>();
-		saved.put("leaderboardPeriod", "week");
+		saved.put("leaderboardPeriod", "fortnight");
 		saved.put("statsPage", "trades");
 		saved.put("statsMinimum", "1b");
 		saved.put("foldedLeaderboards", "\n\nDeaths\n");
