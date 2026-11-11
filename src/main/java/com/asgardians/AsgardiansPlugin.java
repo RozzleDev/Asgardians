@@ -123,6 +123,13 @@ public class AsgardiansPlugin extends Plugin
 	private ClientToolbar clientToolbar;
 
 	@Inject
+	private net.runelite.client.chat.ChatCommandManager chatCommandManager;
+
+	/** Clan profiles looked up for !asg commands, by lowercase RSN, kept for a few minutes. */
+	private final Map<String, Object[]> commandProfiles = new java.util.concurrent.ConcurrentHashMap<>();
+	private static final long COMMAND_PROFILE_TTL = 5 * 60_000L;
+
+	@Inject
 	private ItemManager itemManager;
 
 	@Inject
@@ -309,6 +316,7 @@ public class AsgardiansPlugin extends Plugin
 	protected void startUp()
 	{
 		api = new ApiClient(okHttpClient, gson);
+		chatCommandManager.registerCommand(AsgCommands.PREFIX, this::asgCommand);
 		recorder = new DropRecorder(new DropRecorder.Items()
 		{
 			@Override
@@ -502,6 +510,8 @@ public class AsgardiansPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		chatCommandManager.unregisterCommand(AsgCommands.PREFIX);
+		commandProfiles.clear();
 		// Null checks: RuneLite also calls this after a start that failed part way.
 		for (java.util.concurrent.Future<?> task : new java.util.concurrent.Future<?>[]{flushTask, settingsTask, pbTask, clanTask, groupTask})
 		{
@@ -1125,6 +1135,12 @@ public class AsgardiansPlugin extends Plugin
 			{
 				leftGroupOnPurpose = null;
 			}
+			// A request the member took back has been dealt with.
+			String asked = before != null ? before.getWaiting() : null;
+			if (asked != null && asked.equals(leftGroupOnPurpose) && !asked.equals(now.getWaiting()))
+			{
+				leftGroupOnPurpose = null;
+			}
 		}
 		updateParty(now);
 		if (!lines.isEmpty() || !started.isEmpty())
@@ -1480,6 +1496,81 @@ public class AsgardiansPlugin extends Plugin
 		});
 	}
 
+	/**
+	 * Someone typed "!asg …" in any chat. The line is replaced, on this player's screen only, with the answer. Clan-wide
+	 * answers use what this plugin has already loaded; answers about whoever typed it look up their clan profile, and
+	 * only for players on the clan's member list. Client thread.
+	 */
+	private void asgCommand(ChatMessage message, String text)
+	{
+		if (!config.chatCommands() || !sharing)
+		{
+			return;
+		}
+		String args = Text.removeTags(text).trim();
+		if (!args.toLowerCase(java.util.Locale.UK).startsWith(AsgCommands.PREFIX))
+		{
+			return;
+		}
+		args = args.substring(AsgCommands.PREFIX.length()).trim();
+		Player local = client.getLocalPlayer();
+		String sender = message.getType() == ChatMessageType.PRIVATECHATOUT
+			? (local != null ? local.getName() : null) : Text.sanitize(message.getName());
+		if (sender == null || sender.isEmpty())
+		{
+			return;
+		}
+		net.runelite.api.MessageNode node = message.getMessageNode();
+		String word = AsgCommands.word(args);
+		if (!AsgCommands.personal(word))
+		{
+			AsgCommands.Clan clan = new AsgCommands.Clan(groups, groupActivities, clanView, new java.util.HashMap<>(leaderboards), stats,
+				java.time.Instant.now());
+			replaceLine(node, AsgCommands.answer(args, sender, clan));
+			return;
+		}
+		ClanSettings clan = client.getClanSettings();
+		if (!inClan() || !isClanMember(clan.getMembers(), sender))
+		{
+			return;
+		}
+		String lower = sender.toLowerCase(java.util.Locale.UK);
+		Object[] cached = commandProfiles.get(lower);
+		if (cached != null && System.currentTimeMillis() - (long) cached[0] < COMMAND_PROFILE_TTL)
+		{
+			replaceLine(node, AsgCommands.personal(word, sender, (ClanData.Me) cached[1]));
+			return;
+		}
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (key == null)
+		{
+			return;
+		}
+		api.get(ApiClient.endpoint(address, "members/" + sender.replace('\u00a0', ' ') + "/profile"), key, ClanData.Me.class, result ->
+		{
+			ClanData.Me profile = result.ok() && result.getBody() != null && (result.getBody().getRank() != null
+				|| result.getBody().getDaysInClan() != null || result.getBody().getRsn() != null) ? result.getBody() : null;
+			if (profile != null)
+			{
+				commandProfiles.put(lower, new Object[]{System.currentTimeMillis(), profile});
+			}
+			clientThread.invokeLater(() -> replaceLine(node, AsgCommands.personal(word, sender, profile)));
+		});
+	}
+
+	/** Shows the answer in place of the typed command. Client thread. */
+	private void replaceLine(net.runelite.api.MessageNode node, String answer)
+	{
+		if (answer == null || node == null)
+		{
+			return;
+		}
+		node.setRuneLiteFormatMessage(answer);
+		client.refreshChat();
+	}
+
 	/** The name is on the clan's member list. Names are compared the same way as RSNs elsewhere. */
 	static boolean isClanMember(List<net.runelite.api.clan.ClanMember> members, String name)
 	{
@@ -1529,6 +1620,7 @@ public class AsgardiansPlugin extends Plugin
 				body.addProperty("note", v.getNote());
 				body.addProperty("voice", v.isVoice());
 				body.addProperty("voiceLimit", v.isVoiceLimit());
+				body.addProperty("approval", v.isApproval());
 				body.addProperty("world", client.getWorld());
 				body.addProperty("kc", groupKc(v.getActivity().getId()));
 				// The website names the group's RuneLite party (ASG1, ASG2…); every member's plugin then joins it.
@@ -1582,7 +1674,8 @@ public class AsgardiansPlugin extends Plugin
 			public void join(ClanData.Group group)
 			{
 				ClanData.GroupList list = groups;
-				if (list != null && list.getMine() != null)
+				// Asking a group whose host picks doesn't take the member out of their own group yet.
+				if (list != null && list.getMine() != null && !group.isApproval())
 				{
 					leftGroupOnPurpose = list.getMine();
 				}
@@ -1628,6 +1721,29 @@ public class AsgardiansPlugin extends Plugin
 				com.google.gson.JsonObject body = new com.google.gson.JsonObject();
 				body.addProperty("rsn", rsn);
 				groupAction("groups/" + group.getId() + "/kick", body, "Couldn't remove " + rsn, null);
+			}
+
+			@Override
+			public void accept(ClanData.Group group, String rsn)
+			{
+				com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+				body.addProperty("rsn", rsn);
+				groupAction("groups/" + group.getId() + "/accept", body, "Couldn't accept " + rsn, null);
+			}
+
+			@Override
+			public void decline(ClanData.Group group, String rsn)
+			{
+				com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+				body.addProperty("rsn", rsn);
+				groupAction("groups/" + group.getId() + "/decline", body, "Couldn't decline " + rsn, null);
+			}
+
+			@Override
+			public void cancel(ClanData.Group group)
+			{
+				leftGroupOnPurpose = group.getId();
+				groupAction("groups/" + group.getId() + "/cancel", new com.google.gson.JsonObject(), "Couldn't take back the request", null);
 			}
 
 			@Override

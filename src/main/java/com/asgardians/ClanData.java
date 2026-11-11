@@ -558,12 +558,19 @@ final class ClanData
 		private List<Group> groups;
 		/** The ID of the group this member is in, or null. */
 		private String mine;
-		/** Why this member is no longer in a group, once: away, kicked, closed or removed. */
+		/** Why this member is no longer in a group, once: away, kicked, closed or removed; or declined for a request. */
 		private String reason;
+		/** The ID of the group this member has asked to join and is waiting on the host for, or null. */
+		private String waiting;
 
 		Group mineGroup()
 		{
 			return find(mine);
+		}
+
+		Group waitingGroup()
+		{
+			return find(waiting);
 		}
 
 		Group find(String id)
@@ -608,6 +615,10 @@ final class ClanData
 		/** True when this member may close the group: its host, or a clan moderator. */
 		private Boolean canClose;
 		private String createdAt;
+		/** The host picks who joins: Join sends a request, which the host accepts or declines. */
+		private boolean approval;
+		/** Players waiting for the host to accept them. Sent to the group's members. */
+		private List<GroupMember> requests;
 
 		/** "Theatre of Blood (Hard mode)". */
 		String getTitle()
@@ -630,6 +641,19 @@ final class ClanData
 		String seats()
 		{
 			return mass ? count() + "/8+" : size == null ? count() + "/any" : count() + "/" + size;
+		}
+
+		/** Whether a player is waiting for the host to accept them. */
+		boolean asked(String rsn)
+		{
+			for (GroupMember m : requests != null ? requests : List.<GroupMember>of())
+			{
+				if (m != null && DropRecorder.sameRsn(m.getRsn(), rsn))
+				{
+					return true;
+				}
+			}
+			return false;
 		}
 
 		boolean has(String rsn)

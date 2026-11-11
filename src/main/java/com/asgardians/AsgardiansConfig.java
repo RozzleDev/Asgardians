@@ -146,6 +146,18 @@ public interface AsgardiansConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "chatCommands",
+		name = "!asg chat commands",
+		description = "Answer !asg commands typed in any chat, like the Chat Commands plugin: !asg groups, events, bingo, sotw, botw, news, drops, pb [boss], credit, rank, ehb, ehp, profile, eggs (!asg help lists them). Only players with this plugin see the answers. Answers about whoever typed it are looked up on the clan website, for clan members only.",
+		section = eventsSection,
+		position = 4
+	)
+	default boolean chatCommands()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "teamBadges",
 		name = "Team badges in clan chat",
 		description = "While a clan event with teams is live, show each player's team in place of their clan rank icon in clan chat. Only players in the event get a badge.",

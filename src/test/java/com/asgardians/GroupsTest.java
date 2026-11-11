@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import org.junit.Test;
 
@@ -79,6 +80,126 @@ public class GroupsTest
 		assertEquals(List.of("You were taken out of the Theatre of Blood (Hard mode) group after being away."), Groups.changes(in, away, "Rozzle", null));
 		ClanData.GroupList hosting = groups("g1", group("g1", "Rozzle", 4, "416", "Rozzle"));
 		assertEquals(List.of("You closed your Theatre of Blood (Hard mode) group."), Groups.changes(hosting, groups(null), "Rozzle", "g1"));
+	}
+
+	/** A group whose host picks who joins, with players waiting. */
+	private static String lobby(String id, String host, int size, String[] members, String... asking)
+	{
+		String g = group(id, host, size, "416", members);
+		StringBuilder r = new StringBuilder();
+		for (String rsn : asking)
+		{
+			r.append(r.length() > 0 ? "," : "").append("{\"rsn\":\"").append(rsn).append("\",\"kc\":120}");
+		}
+		return g.substring(0, g.length() - 1) + ",\"approval\":true,\"requests\":[" + r + "]}";
+	}
+
+	private static ClanData.GroupList waiting(String mine, String waiting, String... groups)
+	{
+		ClanData.GroupList list = groups(mine, groups);
+		list.setWaiting(waiting);
+		return list;
+	}
+
+	@Test
+	public void askingToJoinAndBeingAccepted()
+	{
+		String[] clo = {"Clo"};
+		ClanData.GroupList none = groups(null, lobby("g1", "Clo", 4, clo));
+		ClanData.GroupList asked = waiting(null, "g1", lobby("g1", "Clo", 4, clo, "Rozzle"));
+		assertEquals(List.of("You asked to join Clo's Theatre of Blood (Hard mode) group. You'll join when the host accepts you."),
+			Groups.changes(none, asked, "Rozzle", null));
+		assertEquals(List.of("Clo accepted you. You joined Clo's Theatre of Blood (Hard mode) group (2/4) on W416."),
+			Groups.changes(asked, groups("g1", lobby("g1", "Clo", 4, new String[]{"Clo", "Rozzle"})), "Rozzle", null));
+		ClanData.GroupList declined = groups(null, lobby("g1", "Clo", 4, clo));
+		declined.setReason("declined");
+		assertEquals(List.of("Clo didn't accept you into the Theatre of Blood (Hard mode) group this time."),
+			Groups.changes(asked, declined, "Rozzle", null));
+		assertEquals(List.of("You took back your request to join the Theatre of Blood (Hard mode) group."),
+			Groups.changes(asked, none, "Rozzle", "g1"));
+		assertEquals(List.of("The Theatre of Blood (Hard mode) group you asked to join was closed."),
+			Groups.changes(asked, groups(null), "Rozzle", null));
+	}
+
+	@Test
+	public void beingAcceptedMovesYouOutOfYourOldGroup()
+	{
+		ClanData.GroupList before = waiting("g2", "g1", lobby("g1", "Clo", 4, new String[]{"Clo"}, "Rozzle"),
+			group("g2", "Thor", 4, "302", "Thor", "Rozzle"));
+		ClanData.GroupList after = groups("g1", lobby("g1", "Clo", 4, new String[]{"Clo", "Rozzle"}), group("g2", "Thor", 4, "302", "Thor"));
+		assertEquals(List.of("You left the Theatre of Blood (Hard mode) group.",
+			"Clo accepted you. You joined Clo's Theatre of Blood (Hard mode) group (2/4) on W416."),
+			Groups.changes(before, after, "Rozzle", null));
+	}
+
+	@Test
+	public void theHostHearsAboutRequests()
+	{
+		String[] me = {"Rozzle"};
+		ClanData.GroupList before = groups("g1", lobby("g1", "Rozzle", 4, me));
+		assertEquals(List.of("Clo (120 kc) asked to join your group. Accept or decline in the Groups tab."),
+			Groups.changes(before, groups("g1", lobby("g1", "Rozzle", 4, me, "Clo")), "Rozzle", null));
+		// Other members of the group aren't told; the host picks.
+		ClanData.GroupList member = groups("g1", lobby("g1", "Thor", 4, new String[]{"Thor", "Rozzle"}));
+		assertEquals(List.of(), Groups.changes(member, groups("g1", lobby("g1", "Thor", 4, new String[]{"Thor", "Rozzle"}, "Clo")), "Rozzle", null));
+		assertEquals(List.of("Your Theatre of Blood (Hard mode) group is open on W416. Others can ask to join from the Groups tab, and you pick who joins."),
+			Groups.changes(groups(null), before, "Rozzle", null));
+		assertEquals(List.of("Clo started a group: Theatre of Blood (Hard mode), 1/4, W416. Ask to join from the Groups tab."),
+			Groups.started(groups(null), groups(null, lobby("g1", "Clo", 4, new String[]{"Clo"})), "Rozzle"));
+	}
+
+	@Test
+	public void theLobbyDraws()
+	{
+		ZoneId zone = ZoneId.of("Europe/London");
+		java.util.List<String> accepted = new java.util.ArrayList<>();
+		GroupTabs.Actions a = new GroupTabs.Actions()
+		{
+			public void create(GroupTabs.GroupForm.Values values) { }
+			public void join(ClanData.Group group) { }
+			public void leave(ClanData.Group group) { }
+			public void close(ClanData.Group group) { }
+			public void kick(ClanData.Group group, String rsn) { }
+			public void joinParty(ClanData.Group group) { }
+			public void refresh() { }
+			public void accept(ClanData.Group group, String rsn) { accepted.add(rsn); }
+		};
+		// The host sees who's asking, with Accept and Decline.
+		JPanel host = PanelParts.column();
+		GroupTabs.draw(host, new GroupTabs.Input(groups("g1", lobby("g1", "Rozzle", 4, new String[]{"Rozzle"}, "Clo", "Thor")), List.of(),
+			false, null, "Rozzle", Map.of("clo", 416), false, false, null, zone, null), new GroupTabs.GroupForm(v -> { }), a);
+		String text = texts(host);
+		assertTrue(text, text.contains("Asking to join (2)") && text.contains("Accept") && text.contains("Decline") && text.contains("Clo · 120 kc"));
+		// A player waiting sees their request, with a way to take it back.
+		JPanel waiter = PanelParts.column();
+		GroupTabs.draw(waiter, new GroupTabs.Input(waiting(null, "g1", group("g2", "Thor", 4, "302", "Thor"),
+			lobby("g1", "Clo", 4, new String[]{"Clo"}, "Rozzle")), List.of(), false, null, "Rozzle", Map.of(), false, false, null, zone, null),
+			new GroupTabs.GroupForm(v -> { }), a);
+		text = texts(waiter);
+		assertTrue(text, text.contains("Asked to join: waiting for Clo.") && text.contains("Take back request"));
+		assertTrue(text, text.indexOf("Take back request") < text.indexOf("Thor"));
+	}
+
+	/** Every label's and button's text in a panel, in order. */
+	private static String texts(java.awt.Container c)
+	{
+		StringBuilder out = new StringBuilder();
+		for (java.awt.Component k : c.getComponents())
+		{
+			if (k instanceof JLabel)
+			{
+				out.append(((JLabel) k).getText()).append('\n');
+			}
+			else if (k instanceof javax.swing.AbstractButton)
+			{
+				out.append(((javax.swing.AbstractButton) k).getText()).append('\n');
+			}
+			if (k instanceof java.awt.Container)
+			{
+				out.append(texts((java.awt.Container) k));
+			}
+		}
+		return out.toString();
 	}
 
 	@Test

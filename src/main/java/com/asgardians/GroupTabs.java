@@ -99,6 +99,21 @@ final class GroupTabs
 		{
 		}
 
+		/** The host lets a waiting player into the group. */
+		default void accept(ClanData.Group group, String rsn)
+		{
+		}
+
+		/** The host turns a waiting player away. */
+		default void decline(ClanData.Group group, String rsn)
+		{
+		}
+
+		/** The member takes back their request to join. */
+		default void cancel(ClanData.Group group)
+		{
+		}
+
 		/** The member rang or muted the bell for an activity. */
 		default void bell(String activityId, boolean on)
 		{
@@ -205,7 +220,15 @@ final class GroupTabs
 		{
 			if (g != null && g.getId() != null && (mine == null || !g.getId().equals(mine.getId())))
 			{
-				others.add(g);
+				// The group the member is waiting to get into goes first.
+				if (g.getId().equals(list.getWaiting()))
+				{
+					others.add(0, g);
+				}
+				else
+				{
+					others.add(g);
+				}
 			}
 		}
 		addCard(column, PanelParts.section("Open groups" + (others.isEmpty() ? "" : " (" + others.size() + ")")));
@@ -217,7 +240,7 @@ final class GroupTabs
 		}
 		for (ClanData.Group g : others)
 		{
-			addCard(column, groupCard(g, mine != null, in, actions));
+			addCard(column, groupCard(g, mine != null, g.getId().equals(list.getWaiting()), in, actions));
 		}
 
 		if (in.getBells() != null && !ClanView.orEmpty(in.getActivities()).isEmpty())
@@ -356,6 +379,44 @@ final class GroupTabs
 					world != null ? "Online on world " + world : "Offline"));
 			}
 		}
+		List<ClanData.GroupMember> asking = new ArrayList<>();
+		for (ClanData.GroupMember m : ClanView.orEmpty(g.getRequests()))
+		{
+			if (m != null && m.getRsn() != null && !g.has(m.getRsn()))
+			{
+				asking.add(m);
+			}
+		}
+		if (!asking.isEmpty() && host)
+		{
+			card.gap();
+			card.add(heading("Asking to join (" + asking.size() + ")"));
+			for (ClanData.GroupMember m : asking)
+			{
+				Integer world = in.getOnline().get(m.getRsn().toLowerCase(Locale.UK));
+				JLabel who = PanelParts.status(world != null ? GOOD : QUIET, m.getRsn() + (m.getKc() != null ? " · " + m.getKc() + " kc" : ""));
+				who.setToolTipText(world != null ? "Online on world " + world : "Offline");
+				JPanel links = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 6, 0));
+				links.setOpaque(false);
+				if (!in.isBusy())
+				{
+					if (!g.isFull())
+					{
+						links.add(PanelParts.link("Accept", () -> actions.accept(g, m.getRsn())));
+					}
+					links.add(PanelParts.link("Decline", () -> actions.decline(g, m.getRsn())));
+				}
+				card.addWide(PanelParts.spread(who, links));
+			}
+			if (g.isFull())
+			{
+				card.add(small("The group is full, so no one else can be accepted.", QUIET));
+			}
+		}
+		else if (!asking.isEmpty())
+		{
+			card.add(small(asking.size() + (asking.size() == 1 ? " player is" : " players are") + " asking to join. The host picks.", QUIET));
+		}
 		if (Groups.voiceLink(g) != null)
 		{
 			card.gap();
@@ -394,10 +455,14 @@ final class GroupTabs
 		return card;
 	}
 
-	/** Another member's group, with a Join button. */
-	private static Card groupCard(ClanData.Group g, boolean inAGroup, Input in, Actions actions)
+	/**
+	 * Another member's group, with a Join button, or Ask to join when the host picks who joins.
+	 *
+	 * @param waiting the member has asked to join this group and is waiting for the host
+	 */
+	private static Card groupCard(ClanData.Group g, boolean inAGroup, boolean waiting, Input in, Actions actions)
 	{
-		Card card = new Card(null);
+		Card card = waiting ? new Card(null).outlined(PanelParts.HIGHLIGHT, PanelParts.CARD) : new Card(null);
 		card.addWide(header(g, in));
 		if (g.getNote() != null && !g.getNote().trim().isEmpty())
 		{
@@ -421,11 +486,34 @@ final class GroupTabs
 		{
 			card.add(small(String.join(", ", names) + " · " + online + " online", QUIET));
 		}
+		if (waiting)
+		{
+			card.add(PanelParts.status(PanelParts.HIGHLIGHT, "Asked to join: waiting for " + (g.getHost() != null ? g.getHost() : "the host") + "."));
+		}
+		else if (g.isApproval())
+		{
+			card.add(small("The host accepts who joins.", QUIET));
+		}
 		card.gap();
 		JPanel buttons = new JPanel(new GridLayout(1, 0, 4, 0));
 		buttons.setOpaque(false);
-		JButton join = button(g.isFull() ? "Full" : inAGroup ? "Join (leaves yours)" : "Join", () -> actions.join(g));
-		join.setEnabled(!g.isFull() && !in.isBusy());
+		JButton join;
+		if (waiting)
+		{
+			join = button("Take back request", () -> actions.cancel(g));
+			join.setEnabled(!in.isBusy());
+		}
+		else
+		{
+			// Asking doesn't take the member out of their own group: that only happens once the host accepts them.
+			String label = g.isFull() ? "Full" : g.isApproval() ? "Ask to join" : inAGroup ? "Join (leaves yours)" : "Join";
+			join = button(label, () -> actions.join(g));
+			join.setEnabled(!g.isFull() && !in.isBusy());
+			if (g.isApproval() && inAGroup)
+			{
+				join.setToolTipText("You stay in your group until the host accepts you");
+			}
+		}
 		buttons.add(join);
 		if (Boolean.TRUE.equals(g.getCanClose()))
 		{
@@ -540,6 +628,8 @@ final class GroupTabs
 			boolean voice;
 			/** Lock the voice channel to the group's size. Only matters with voice on and a set size. */
 			boolean voiceLimit;
+			/** The host picks who joins: others ask, and the host accepts or declines. */
+			boolean approval;
 		}
 
 		/** The "Start a group" card holding this form, kept so redraws can leave it in place. */
@@ -550,6 +640,7 @@ final class GroupTabs
 		private final JCheckBox ffa = new JCheckBox("Free for all (FFA)");
 		private final JCheckBox voice = new JCheckBox("Discord voice channel", true);
 		private final JCheckBox voiceLimit = new JCheckBox("Lock to group size", true);
+		private final JCheckBox approval = new JCheckBox("I accept who joins", true);
 		private final JTextField note = new JTextField();
 		private final JLabel modeLabel = label("Mode");
 		private final JButton create;
@@ -574,6 +665,10 @@ final class GroupTabs
 			voiceLimit.setBorder(javax.swing.BorderFactory.createEmptyBorder(0, 16, 0, 0));
 			voiceLimit.setToolTipText("Only as many people as the group's size can be in the voice channel. Unticked, anyone can join it.");
 			voice.addItemListener(e -> voiceLimit.setEnabled(voice.isSelected()));
+			approval.setOpaque(false);
+			approval.setFont(net.runelite.client.ui.FontManager.getRunescapeSmallFont());
+			approval.setForeground(TEXT);
+			approval.setToolTipText("Players ask to join and wait in a lobby until you accept them. Unticked, anyone can join straight away.");
 			note.setToolTipText("Optional, e.g. learner friendly, gear or KC needed");
 			add(label("Activity"));
 			add(wide(activity));
@@ -582,6 +677,7 @@ final class GroupTabs
 			add(label("Size"));
 			add(wide(size));
 			add(wide(ffa));
+			add(wide(approval));
 			add(wide(voice));
 			add(wide(voiceLimit));
 			add(label("Note (optional)"));
@@ -596,7 +692,7 @@ final class GroupTabs
 				}
 			});
 			add(wide(create));
-			JLabel hint = small("Your world is filled in from where you are. Anyone in the clan with the plugin can join.", QUIET);
+			JLabel hint = small("Your world is filled in from where you are. Clan members with the plugin can ask to join, or join straight away with \"I accept who joins\" unticked.", QUIET);
 			add(hint);
 			activity.addActionListener(e ->
 			{
@@ -725,7 +821,7 @@ final class GroupTabs
 			}
 			return new Values(a, mode.isVisible() ? (String) mode.getSelectedItem() : null, seats, mass,
 				a.isLoot() ? (ffa.isSelected() ? "ffa" : "split") : null, text.isEmpty() ? null : text, voice.isSelected(),
-				voice.isSelected() && voiceLimit.isSelected());
+				voice.isSelected() && voiceLimit.isSelected(), approval.isSelected());
 		}
 
 		/** The activity can't go past its maxSize: it has one of 8 or less, and isn't marked as a mass. */
