@@ -83,13 +83,13 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "shareLocation",
 		name = "Share my location on the map",
-		description = "Show clanmates where you are on their world map. Only your own position is sent, and never inside instances (raids, boss rooms). While this is off, you don't appear on anyone's map.",
+		description = "Show clanmates where you are on their world map. Only your own position is sent, only while \"Share my data with Asgardians\" is on, and never inside instances (raids, boss rooms). Turn this off and you don't appear on anyone's map.",
 		section = sharingSection,
 		position = 0
 	)
 	default boolean shareLocation()
 	{
-		return false;
+		return true;
 	}
 
 	@ConfigItem(

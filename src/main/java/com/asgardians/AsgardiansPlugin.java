@@ -993,6 +993,10 @@ public class AsgardiansPlugin extends Plugin
 			}
 			configManager.setConfiguration(AsgardiansConfig.GROUP, notifiedKey, latest);
 		}
+		if (firstLoadThisLogin)
+		{
+			tellAboutMapOnce();
+		}
 
 		if (!config.eventMessages())
 		{
@@ -2559,6 +2563,22 @@ public class AsgardiansPlugin extends Plugin
 		}
 		submit(record, settings.getScreenshots().isDeaths());
 	}
+
+	/** Once per RuneLite profile: tells the member the clan map shows them, and how to stop it. Client thread. */
+	private void tellAboutMapOnce()
+	{
+		if ("true".equals(configManager.getConfiguration(AsgardiansConfig.GROUP, MAP_NOTICE_KEY)))
+		{
+			return;
+		}
+		configManager.setConfiguration(AsgardiansConfig.GROUP, MAP_NOTICE_KEY, "true");
+		chat(config.shareLocation()
+			? "New: clanmates on your world map. Clanmates can now see where you are on theirs. Don't want that? Turn off \"Share my location on the map\" in the plugin settings."
+			: "New: clanmates on your world map. Turn on \"Share my location on the map\" in the plugin settings to show up on theirs.");
+	}
+
+	/** Set once the member has been told about the clan map. */
+	private static final String MAP_NOTICE_KEY = "mapNoticeShown";
 
 	/** A new message of the day: onto Home, and into chat once a login (again if staff change it). Any thread. */
 	private void setMotd(ClanData.Motd next)

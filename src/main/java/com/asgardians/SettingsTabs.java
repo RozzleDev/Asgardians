@@ -40,7 +40,7 @@ final class SettingsTabs
 		new Group("Sharing", List.of(
 			new Setting("shareData", "Share my data with Asgardians", false),
 			new Setting("shareActivity", "Share my activity", true),
-			new Setting("shareLocation", "Share my location on the map", false),
+			new Setting("shareLocation", "Share my location on the map", true),
 			new Setting("shareDeaths", "Share my deaths", true),
 			new Setting("uploadScreenshots", "Upload screenshots", true),
 			new Setting("saveScreenshots", "Save screenshots locally", true)), null),
