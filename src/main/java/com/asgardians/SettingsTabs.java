@@ -46,7 +46,7 @@ final class SettingsTabs
 			new Setting("saveScreenshots", "Save screenshots locally", true)), null),
 		new Group("Events and news", List.of(
 			new Setting("eventMessages", "Event messages in chat", true),
-			new Setting("tileSound", "Ding when a tile is completed", true),
+			new Setting("tileSound", "Ding when my team completes a tile", true),
 			new Setting("tileFireworks", "Fireworks for my team's tiles", true),
 			new Setting("motdAtLogin", "Message of the day at login", true),
 			new Setting("newsMessages", "Announcements in chat", true),

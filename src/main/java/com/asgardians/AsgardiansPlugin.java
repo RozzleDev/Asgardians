@@ -1035,10 +1035,10 @@ public class AsgardiansPlugin extends Plugin
 		celebrateTiles(now.completedTiles(previous));
 	}
 
-	/** A ding for completed tiles, and fireworks when one was the member's own team's. Client thread. */
+	/** A ding and fireworks when the member's own team completed a tile; other teams' tiles stay quiet. Client thread. */
 	private void celebrateTiles(List<Boolean> completed)
 	{
-		if (completed.isEmpty())
+		if (!completed.contains(true))
 		{
 			return;
 		}
@@ -1049,7 +1049,7 @@ public class AsgardiansPlugin extends Plugin
 			client.playSoundEffect(TILE_SOUND, volume > 0 ? volume : net.runelite.api.SoundEffectVolume.MEDIUM_HIGH);
 		}
 		Player local = client.getLocalPlayer();
-		if (config.tileFireworks() && completed.contains(true) && local != null)
+		if (config.tileFireworks() && local != null)
 		{
 			// The level-up fireworks, on the member's own character and only on their screen.
 			local.createSpotAnim(TILE_FIREWORKS_KEY, net.runelite.api.gameval.SpotanimID.LEVELUP_ANIM, 0, 0);

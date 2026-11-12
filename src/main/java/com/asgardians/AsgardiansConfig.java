@@ -190,8 +190,8 @@ public interface AsgardiansConfig extends Config
 
 	@ConfigItem(
 		keyName = "tileSound",
-		name = "Ding when a tile is completed",
-		description = "Play the boss unique-drop ding when the plugin tells you a team completed a bingo tile",
+		name = "Ding when my team completes a tile",
+		description = "Play the boss unique-drop ding when your team completes a bingo tile. Other teams' tiles don't ding.",
 		section = eventsSection,
 		position = 1
 	)
