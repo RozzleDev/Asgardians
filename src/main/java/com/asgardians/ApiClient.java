@@ -316,6 +316,14 @@ class ApiClient
 			.delete().build(), ClanData.SignupResult.class, done);
 	}
 
+	/** DELETEs and reads the reply as {@code type}. */
+	<T> void delete(HttpUrl url, String installKey, Class<T> type, Consumer<GetResult<T>> done)
+	{
+		send(new Request.Builder().url(url)
+			.header(INSTALL_KEY_HEADER, installKey)
+			.delete().build(), type, done);
+	}
+
 	/** POSTs a JSON body and reads the reply as {@code type}. */
 	<T> void post(HttpUrl url, String installKey, JsonObject body, Class<T> type, Consumer<GetResult<T>> done)
 	{

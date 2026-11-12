@@ -6,8 +6,9 @@ import java.util.Map;
 import net.runelite.api.gameval.ItemID;
 
 /**
- * Works out what the member is doing from their own client, for the Members page: "Theatre of Blood", "Vorkath",
- * "Slayer · Abyssal demon", "Mining", "Grand Exchange". Only the member's own state is used, and it's only sent with
+ * Works out what the member is doing from their own client, for the Members page: "Theatre of Blood · Verzik Vitur",
+ * "Vorkath", "Slayer · Abyssal demon", "Mining", "Banking · Varrock West", "Grand Exchange". The part before " · " is the
+ * activity or place; after it, the boss, monster or bank. Only the member's own state is used, and it's only sent with
  * "Share my activity" on. The plugin calls {@link #describe} from the client thread.
  */
 final class ActivityTracker
@@ -32,6 +33,8 @@ final class ActivityTracker
 	private static final Map<String, String> BOSSES = new HashMap<>();
 	/** Activities to an item whose picture stands for them. */
 	private static final Map<String, Integer> ICONS = new HashMap<>();
+	/** Map regions with a bank, to the bank's name. */
+	private static final Map<Integer, String> BANKS = new HashMap<>();
 
 	static
 	{
@@ -97,6 +100,38 @@ final class ActivityTracker
 		BOSSES.put("deranged archaeologist", "Deranged Archaeologist");
 		BOSSES.put("the gauntlet", "The Gauntlet");
 
+		BANKS.put(12597, "Varrock West");
+		BANKS.put(12853, "Varrock East");
+		BANKS.put(12084, "Falador East");
+		BANKS.put(11828, "Falador West");
+		BANKS.put(12342, "Edgeville");
+		BANKS.put(12338, "Draynor Village");
+		BANKS.put(12850, "Lumbridge");
+		BANKS.put(13105, "Al Kharid");
+		BANKS.put(11061, "Catherby");
+		BANKS.put(10806, "Seers' Village");
+		BANKS.put(10547, "East Ardougne");
+		BANKS.put(10292, "East Ardougne");
+		BANKS.put(10288, "Yanille");
+		BANKS.put(9776, "Castle Wars");
+		BANKS.put(12344, "Ferox Enclave");
+		BANKS.put(13878, "Canifis");
+		BANKS.put(14646, "Port Phasmatys");
+		BANKS.put(14642, "Ver Sinhaza");
+		BANKS.put(4919, "Mount Quidamortem");
+		BANKS.put(4922, "Farming Guild");
+		BANKS.put(6198, "Woodcutting Guild");
+		BANKS.put(13362, "Emir's Arena");
+		BANKS.put(13613, "Nardah");
+		BANKS.put(11571, "Crafting Guild");
+		BANKS.put(10293, "Fishing Guild");
+		BANKS.put(12109, "Rogues' Den");
+		BANKS.put(14936, "Motherlode Mine");
+		BANKS.put(9541, "Zanaris");
+		BANKS.put(11310, "Shilo Village");
+		BANKS.put(8253, "Lunar Isle");
+		BANKS.put(14907, "Fossil Island");
+
 		ICONS.put(COX, ItemID.OLMPET);
 		ICONS.put(TOB, ItemID.VERZIKPET);
 		ICONS.put(TOA, ItemID.WARDENPET_TUMEKEN);
@@ -155,8 +190,9 @@ final class ActivityTracker
 		/** The NPC last fought, and on which tick. */
 		String target;
 		int targetTick;
-		/** The member's Slayer task count, so fights on task show as Slayer. */
+		/** The member's Slayer task count, and when Slayer XP last came in: only fights giving Slayer XP are Slayer. */
 		int slayerCount;
+		int slayerXpTick;
 		/** The skill that last gave XP outside combat, and on which tick. */
 		String skill;
 		int skillTick;
@@ -167,26 +203,25 @@ final class ActivityTracker
 	/** What the member is doing, or null when nothing in particular (shown as just "Online"). */
 	static String describe(Snapshot s)
 	{
+		boolean fighting = s.getTarget() != null && s.getTargetTick() >= 0 && s.getTick() - s.getTargetTick() <= RECENT_TICKS;
+		String boss = fighting ? boss(s.getTarget()) : null;
 		if (s.isInCox())
 		{
-			return COX;
+			return COX + (COX.equals(boss) ? " · " + s.getTarget() : "");
 		}
 		if (s.isInTob())
 		{
-			return TOB;
+			return TOB + (TOB.equals(boss) ? " · " + s.getTarget() : "");
 		}
-		boolean fighting = s.getTarget() != null && s.getTargetTick() >= 0 && s.getTick() - s.getTargetTick() <= RECENT_TICKS;
-		if (fighting)
+		if (boss != null)
 		{
-			String boss = boss(s.getTarget());
-			if (boss != null)
-			{
-				return boss;
-			}
-			if (s.getSlayerCount() > 0)
-			{
-				return "Slayer · " + s.getTarget();
-			}
+			// A raid's bosses show the raid first, then the boss.
+			return boss.equals(COX) || boss.equals(TOB) || boss.equals(TOA) ? boss + " · " + s.getTarget() : boss;
+		}
+		boolean slayerXp = s.getSlayerXpTick() >= 0 && s.getTick() - s.getSlayerXpTick() <= RECENT_TICKS;
+		if (fighting && slayerXp && s.getSlayerCount() > 0)
+		{
+			return "Slayer · " + s.getTarget();
 		}
 		boolean skilling = s.getSkill() != null && s.getSkillTick() >= 0 && s.getTick() - s.getSkillTick() <= RECENT_TICKS;
 		if (skilling)
@@ -195,7 +230,8 @@ final class ActivityTracker
 		}
 		if (s.isBankOpen())
 		{
-			return s.getRegion() == GE_REGION ? GE : BANK;
+			String bank = BANKS.get(s.getRegion());
+			return s.getRegion() == GE_REGION ? GE : bank != null ? BANK + " · " + bank : BANK;
 		}
 		if (s.getRegion() == GE_REGION)
 		{
@@ -206,6 +242,12 @@ final class ActivityTracker
 			return "Combat · " + s.getTarget();
 		}
 		return null;
+	}
+
+	/** The bank in a map region, or null when it isn't one the plugin knows. */
+	static String bank(int region)
+	{
+		return BANKS.get(region);
 	}
 
 	/** The boss an NPC name belongs to, or null when it isn't one. */

@@ -31,6 +31,8 @@ final class SettingsTabs
 	{
 		String title;
 		List<Setting> settings;
+		/** A line under the heading, or null. */
+		String note;
 	}
 
 	/** Same keys, names and defaults as {@link AsgardiansConfig}. */
@@ -38,21 +40,30 @@ final class SettingsTabs
 		new Group("Sharing", List.of(
 			new Setting("shareData", "Share my data with Asgardians", false),
 			new Setting("shareActivity", "Share my activity", true),
+			new Setting("shareLocation", "Share my location on the map", false),
 			new Setting("shareDeaths", "Share my deaths", true),
 			new Setting("uploadScreenshots", "Upload screenshots", true),
-			new Setting("saveScreenshots", "Save screenshots locally", true))),
+			new Setting("saveScreenshots", "Save screenshots locally", true)), null),
 		new Group("Events and news", List.of(
 			new Setting("eventMessages", "Event messages in chat", true),
+			new Setting("tileSound", "Ding when a tile is completed", true),
+			new Setting("tileFireworks", "Fireworks for my team's tiles", true),
+			new Setting("motdAtLogin", "Message of the day at login", true),
 			new Setting("newsMessages", "Announcements in chat", true),
 			new Setting("teamBadges", "Team badges in clan chat", true),
-			new Setting("showCodeword", "Show event codeword", true))),
+			new Setting("showCodeword", "Show event codeword", true)), null),
 		new Group("Groups", List.of(
 			new Setting("groupAlerts", "New groups in chat", true),
-			new Setting("groupOverlay", "New groups on screen", true),
-			new Setting("groupParty", "Join a group's RuneLite party", true))),
+			new Setting("groupOverlay", "New groups on screen", false),
+			new Setting("groupParty", "Join a group's RuneLite party", true)),
+			"Want new groups on screen too? Turn on \"New groups on screen\". It's off to start with."),
+		new Group("World map", List.of(
+			new Setting("showClanMap", "Show clanmates on the map", true),
+			new Setting("mapOnlyMyWorld", "Only clanmates on my world", true)),
+			"Clanmates who share their location show on your world map."),
 		new Group("Handeggs", List.of(
 			new Setting("eggMessages", "Egg messages in chat", true),
-			new Setting("eggSound", "Sound when egged", true))));
+			new Setting("eggSound", "Sound when egged", true)), null));
 
 	private SettingsTabs()
 	{
@@ -79,6 +90,12 @@ final class SettingsTabs
 			javax.swing.JLabel heading = PanelParts.section(group.getTitle());
 			heading.setAlignmentX(JPanel.LEFT_ALIGNMENT);
 			column.add(heading);
+			if (group.getNote() != null)
+			{
+				javax.swing.JLabel note = small(group.getNote(), QUIET);
+				note.setAlignmentX(JPanel.LEFT_ALIGNMENT);
+				column.add(note);
+			}
 			for (Setting s : group.getSettings())
 			{
 				boolean on = value(settings, s);

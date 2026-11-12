@@ -24,20 +24,31 @@ public class NewPagesTest
 	private static ActivityTracker.Snapshot snap(boolean cox, boolean tob, String target, int targetTick, int slayer, String skill,
 		int skillTick, boolean bank, int region)
 	{
-		return new ActivityTracker.Snapshot(100, cox, tob, target, targetTick, slayer, skill, skillTick, bank, region);
+		return snap(cox, tob, target, targetTick, slayer, -1, skill, skillTick, bank, region);
+	}
+
+	private static ActivityTracker.Snapshot snap(boolean cox, boolean tob, String target, int targetTick, int slayer, int slayerXpTick,
+		String skill, int skillTick, boolean bank, int region)
+	{
+		return new ActivityTracker.Snapshot(100, cox, tob, target, targetTick, slayer, slayerXpTick, skill, skillTick, bank, region);
 	}
 
 	@Test
 	public void activityPrefersRaidsThenBossesThenSkills()
 	{
 		assertEquals("Chambers of Xeric", ActivityTracker.describe(snap(true, false, "Vorkath", 99, 0, "Mining", 99, false, 0)));
+		assertEquals("Chambers of Xeric · Great Olm", ActivityTracker.describe(snap(true, false, "Great Olm", 99, 0, null, -1, false, 0)));
 		assertEquals("Theatre of Blood", ActivityTracker.describe(snap(false, true, null, -1, 0, null, -1, false, 0)));
+		assertEquals("Theatre of Blood · Verzik Vitur", ActivityTracker.describe(snap(false, true, "Verzik Vitur", 95, 0, null, -1, false, 0)));
 		assertEquals("Vorkath", ActivityTracker.describe(snap(false, false, "Vorkath", 90, 0, "Mining", 95, false, 0)));
-		assertEquals("Tombs of Amascut", ActivityTracker.describe(snap(false, false, "Kephri", 90, 0, null, -1, false, 0)));
-		assertEquals("Slayer · Abyssal demon", ActivityTracker.describe(snap(false, false, "Abyssal demon", 90, 40, null, -1, false, 0)));
+		assertEquals("Tombs of Amascut · Kephri", ActivityTracker.describe(snap(false, false, "Kephri", 90, 0, null, -1, false, 0)));
+		// On a task, a fight only counts as Slayer while it's giving Slayer XP.
+		assertEquals("Slayer · Abyssal demon", ActivityTracker.describe(snap(false, false, "Abyssal demon", 90, 40, 92, null, -1, false, 0)));
+		assertEquals("Combat · Cow", ActivityTracker.describe(snap(false, false, "Cow", 90, 40, -1, null, -1, false, 0)));
 		assertEquals("Mining", ActivityTracker.describe(snap(false, false, "Abyssal demon", 90, 0, "Mining", 95, false, 0)));
 		assertEquals("Grand Exchange", ActivityTracker.describe(snap(false, false, null, -1, 0, null, -1, true, ActivityTracker.GE_REGION)));
 		assertEquals("Banking", ActivityTracker.describe(snap(false, false, null, -1, 0, null, -1, true, 1)));
+		assertEquals("Banking · Varrock West", ActivityTracker.describe(snap(false, false, null, -1, 0, null, -1, true, 12597)));
 		// A fight or skill from long ago doesn't count.
 		assertNull(ActivityTracker.describe(snap(false, false, "Vorkath", 10, 0, "Mining", 10, false, 1)));
 	}
@@ -46,6 +57,9 @@ public class NewPagesTest
 	public void activitiesFallIntoTheMembersFilters()
 	{
 		assertEquals(ActivityTracker.RAIDS, ActivityTracker.category("Theatre of Blood"));
+		assertEquals(ActivityTracker.RAIDS, ActivityTracker.category("Chambers of Xeric · Great Olm"));
+		assertTrue(ActivityTracker.icon("Chambers of Xeric · Great Olm") != null);
+		assertTrue(ActivityTracker.icon("Banking · Varrock West") != null);
 		assertEquals(ActivityTracker.BOSSING, ActivityTracker.category("Vorkath"));
 		assertEquals(ActivityTracker.BOSSING, ActivityTracker.category("Slayer · Abyssal demon"));
 		assertEquals(ActivityTracker.SKILLING, ActivityTracker.category("Mining"));

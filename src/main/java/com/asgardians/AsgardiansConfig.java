@@ -30,7 +30,7 @@ public interface AsgardiansConfig extends Config
 
 	@ConfigSection(
 		name = "Groups",
-		description = "The group finder in the Groups tab",
+		description = "The group finder in the Groups tab. On-screen alerts for new groups are off until you turn on \"New groups on screen\".",
 		position = 3
 	)
 	String groupsSection = "groups";
@@ -41,6 +41,13 @@ public interface AsgardiansConfig extends Config
 		position = 4
 	)
 	String eggsSection = "eggs";
+
+	@ConfigSection(
+		name = "World map",
+		description = "Clanmates who share their location, on your world map",
+		position = 5
+	)
+	String mapSection = "map";
 
 	@ConfigSection(
 		name = "Advanced",
@@ -71,6 +78,54 @@ public interface AsgardiansConfig extends Config
 	default boolean shareActivity()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "shareLocation",
+		name = "Share my location on the map",
+		description = "Show clanmates where you are on their world map. Only your own position is sent, and never inside instances (raids, boss rooms). While this is off, you don't appear on anyone's map.",
+		section = sharingSection,
+		position = 0
+	)
+	default boolean shareLocation()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "showClanMap",
+		name = "Show clanmates on the map",
+		description = "Show clanmates who share their location on your world map. This only changes what you see.",
+		section = mapSection,
+		position = 0
+	)
+	default boolean showClanMap()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "mapOnlyMyWorld",
+		name = "Only clanmates on my world",
+		description = "Only show clanmates on the world you're on, so a busy clan doesn't cover the map. Turn off to see everyone who shares their location.",
+		section = mapSection,
+		position = 1
+	)
+	default boolean mapOnlyMyWorld()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "deathMessage",
+		name = "My death message",
+		description = "Optional words added to your death post on the clan Discord, e.g. \"Sit. {killer} got me again\". {killer} becomes what killed you, {place} where, and {lost} what it cost. Leave empty for none.",
+		section = sharingSection,
+		position = 0
+	)
+	default String deathMessage()
+	{
+		return "";
 	}
 
 	@ConfigItem(
@@ -134,6 +189,42 @@ public interface AsgardiansConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "tileSound",
+		name = "Ding when a tile is completed",
+		description = "Play the boss unique-drop ding when the plugin tells you a team completed a bingo tile",
+		section = eventsSection,
+		position = 1
+	)
+	default boolean tileSound()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "tileFireworks",
+		name = "Fireworks for my team's tiles",
+		description = "Set off level-up fireworks on your character when your team completes a bingo tile. Only you see them.",
+		section = eventsSection,
+		position = 1
+	)
+	default boolean tileFireworks()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "motdAtLogin",
+		name = "Message of the day at login",
+		description = "Show the clan's message of the day in chat each time you log in, and when staff change it",
+		section = eventsSection,
+		position = 3
+	)
+	default boolean motdAtLogin()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "newsMessages",
 		name = "Announcements in chat",
 		description = "A chat message when clan staff post a new announcement, and at login for any you haven't read",
@@ -148,7 +239,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "chatCommands",
 		name = "!asg chat commands",
-		description = "Answer !asg commands typed in any chat, like the Chat Commands plugin: !asg groups, events, bingo, sotw, botw, news, drops, pb [boss], credit, rank, ehb, ehp, profile, eggs (!asg help lists them). Only players with this plugin see the answers. Answers about whoever typed it are looked up on the clan website, for clan members only.",
+		description = "Answer !asg commands typed in any chat, like the Chat Commands plugin: !asg groups, events, bingo, sotw, botw, news, drops, cabbage, pb [boss], credit, rank, ehb, ehp, profile, eggs (!asg help lists them). Only players with this plugin see the answers. Answers about whoever typed it are looked up on the clan website, for clan members only.",
 		section = eventsSection,
 		position = 4
 	)
@@ -184,13 +275,13 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "groupOverlay",
 		name = "New groups on screen",
-		description = "Also show new groups on screen for a few seconds. Pick which activities with the screen icons under \"Group alerts\" in the Groups tab (all are on until you change them). Turn this off to never show them on screen.",
+		description = "Off by default. Turn this on to also see new groups on screen for a few seconds. Pick which activities with the screen icons under \"Group alerts\" in the Groups tab (all are on until you change them).",
 		section = groupsSection,
 		position = 1
 	)
 	default boolean groupOverlay()
 	{
-		return true;
+		return false;
 	}
 
 	@ConfigItem(

@@ -108,7 +108,7 @@ public class PanelPreview
 		frame.pack();
 		for (String page : new String[]{AsgardiansPanel.HOME, AsgardiansPanel.EVENTS, AsgardiansPanel.BINGO, AsgardiansPanel.GROUPS,
 			AsgardiansPanel.MEMBERS, AsgardiansPanel.DROPS, AsgardiansPanel.LEADERBOARD, AsgardiansPanel.PROFILE, AsgardiansPanel.MEMBER,
-			AsgardiansPanel.NEWS, AsgardiansPanel.PBS, AsgardiansPanel.SETTINGS})
+			AsgardiansPanel.NEWS, AsgardiansPanel.PBS, AsgardiansPanel.SETTINGS, AsgardiansPanel.STAFF})
 		{
 			if (page.equals(AsgardiansPanel.LEADERBOARD))
 			{
@@ -272,6 +272,23 @@ public class PanelPreview
 		panel.updateGroups(new GroupTabs.Input(groups(), activities(), false, null, "Rozzle", Map.of("rozzle", 416, "clo", 416), false,
 			false, NOW, ZONE, null));
 		panel.updateMembers(members());
+		panel.updateMotd(GSON.fromJson("{\"text\":\"Bingo #4 sign-ups close Friday 8pm. Mass ToB tonight at 9 on W416!\",\"author\":\"pricey\"}", ClanData.Motd.class));
+		panel.setStaffActions(rsn -> panel.updateStaffNotes(rsn, new StaffTabs.Input(rsn == null
+			? GSON.fromJson("{\"notes\":[{\"id\":\"1\",\"text\":\"Holding 100m for Saturday's drop party.\",\"author\":\"pricey\",\"at\":\"2026-11-08T10:00:00Z\"},"
+				+ "{\"id\":\"2\",\"text\":\"Bingo #4 prize pot: 250m, Clo has it.\",\"author\":\"Clo\",\"at\":\"2026-11-06T19:30:00Z\"}]}", ClanData.StaffNoteList.class).getNotes()
+			: GSON.fromJson("{\"notes\":[{\"id\":\"3\",\"text\":\"Warned for spam in clan chat.\",\"author\":\"pricey\",\"at\":\"2026-10-30T20:00:00Z\"}]}",
+				ClanData.StaffNoteList.class).getNotes(), false, null, NOW)), new StaffTabs.Actions()
+		{
+			@Override
+			public void add(String rsn, String text)
+			{
+			}
+
+			@Override
+			public void delete(String rsn, ClanData.StaffNote note)
+			{
+			}
+		});
 		return panel;
 	}
 
@@ -329,7 +346,7 @@ public class PanelPreview
 
 	private static AsgardiansPanel.State state()
 	{
-		ClanData.Me me = GSON.fromJson("{\"rsn\":\"Rozzle\",\"rank\":\"thor\",\"daysInClan\":2650,\"splitCredit\":990000000,"
+		ClanData.Me me = GSON.fromJson("{\"rsn\":\"Rozzle\",\"staff\":true,\"rank\":\"thor\",\"daysInClan\":2650,\"splitCredit\":990000000,"
 			+ "\"discordLinked\":true,\"drops\":214,\"dropValue\":612000000,\"clogObtained\":812,\"clogTotal\":1568,\"pbs\":37,\"deaths\":41,"
 			+ "\"ehb\":130.4,\"ehp\":890.2,\"lastDeathBy\":\"Vorkath\",\"lastDeathAt\":\"2026-11-06T12:00:00Z\",\"topKiller\":\"Verzik Vitur\","
 			+ "\"eggsThrown\":14,\"eggsReceived\":9,"
@@ -479,16 +496,16 @@ public class PanelPreview
 	private static MembersTabs.Input members()
 	{
 		return new MembersTabs.Input(List.of(
-			new MembersTabs.Member("Rozzle", 416, "Grand Exchange"),
-			new MembersTabs.Member("Clo", 416, "Theatre of Blood"),
-			new MembersTabs.Member("Str4tty", 416, "Theatre of Blood"),
-			new MembersTabs.Member("pricey", 302, "Nex"),
-			new MembersTabs.Member("Odin Jr", 330, "Slayer · Abyssal demon"),
-			new MembersTabs.Member("Freya", 360, "Tempoross"),
-			new MembersTabs.Member("Heimdall", 302, "Mining"),
-			new MembersTabs.Member("Loki BTW", 444, null),
-			new MembersTabs.Member("Baldur", null, null),
-			new MembersTabs.Member("Tyr", null, null)), "Rozzle", 416, "Grand Exchange", true, false, null);
+			new MembersTabs.Member("Rozzle", 416, "Grand Exchange", true),
+			new MembersTabs.Member("Clo", 416, "Theatre of Blood · Verzik Vitur", true),
+			new MembersTabs.Member("Str4tty", 416, "Theatre of Blood · Verzik Vitur", true),
+			new MembersTabs.Member("pricey", 302, "Nex", true),
+			new MembersTabs.Member("Odin Jr", 330, "Slayer · Abyssal demon", true),
+			new MembersTabs.Member("Freya", 360, "Banking · Varrock West", true),
+			new MembersTabs.Member("Heimdall", 302, "Mining", false),
+			new MembersTabs.Member("Loki BTW", 444, "Combat · Cow", true),
+			new MembersTabs.Member("Baldur", null, null, true),
+			new MembersTabs.Member("Tyr", null, null, false)), "Rozzle", 416, "Grand Exchange", true, false, null);
 	}
 
 	private static ClanData.StatsFeed feed()

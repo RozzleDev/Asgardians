@@ -24,7 +24,9 @@ class Record
 		/** The member's XP in each skill, for XP bingo tasks and leaderboards. */
 		xp,
 		/** A finished quest speedrun, for medal bingo tasks. */
-		speedrun
+		speedrun,
+		/** The game's 10-minute warning before its 6-hour logout: a "nerd log", for the clan high score. */
+		nerdlog
 	}
 
 	/** Kc records: the kill's own time, when the game showed one (a PB or not). */
@@ -142,6 +144,8 @@ class Record
 				return "XP: " + (totalXp != null ? String.format("%,d", totalXp) + " total" : "");
 			case speedrun:
 				return "Speedrun: " + (speedrun != null ? speedrun.getQuest() : "");
+			case nerdlog:
+				return "Nerd log";
 			case death:
 				if (death == null || death.getKiller() == null || death.getKiller().getName() == null)
 				{

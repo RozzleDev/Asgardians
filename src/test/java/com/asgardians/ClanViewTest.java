@@ -110,6 +110,10 @@ public class ClanViewTest
 		assertEquals(List.of("Event bingo: Your team completed \"Tile a\".",
 			"Event bingo: Your team submitted an item for \"Tile b\".",
 			"Event bingo: Your team's submission for \"Tile c\" was declined."), after.tileChanges(before));
+		// One tile completed, by the member's own team: a ding and fireworks.
+		assertEquals(List.of(true), after.completedTiles(before));
+		assertEquals(List.of(), after.completedTiles(after));
+		assertEquals(List.of(), after.completedTiles(null));
 	}
 
 	static ClanData.Team team(String id, String name, String... members)

@@ -57,6 +57,7 @@ class AsgardiansPanel extends PluginPanel
 	static final String NEWS = "news";
 	static final String PBS = "pbs";
 	static final String SETTINGS = "settings";
+	static final String STAFF = "staff";
 	/** One event's details. */
 	static final String EVENT = "event";
 
@@ -106,10 +107,46 @@ class AsgardiansPanel extends PluginPanel
 	private final JPanel newsTab = PanelParts.column();
 	private final JPanel groupsTab = PanelParts.column();
 	private final JPanel membersTab = PanelParts.column();
+	/** The Members page below its search box, which stays put so typing isn't interrupted. */
+	private final JPanel membersList = PanelParts.column();
+	private final javax.swing.JTextField memberSearch = new javax.swing.JTextField();
 	private final JPanel statsTab = PanelParts.column();
 	private final JPanel pbsTab = PanelParts.column();
 	private final JPanel settingsTab = PanelParts.column();
 	private final JPanel eventTab = PanelParts.column();
+	/** Staff notes: the general notes page, and the notes under a clanmate's profile. Each list sits above a form
+	 * that isn't redrawn, so a note being typed survives refreshes. */
+	private final JPanel staffTab = PanelParts.column();
+	private final JPanel staffList = PanelParts.column();
+	private final JPanel memberProfileColumn = PanelParts.column();
+	private final JPanel memberNotesHolder = PanelParts.column();
+	private final JPanel memberNotesList = PanelParts.column();
+	private final JPanel staffHomeRow = PanelParts.column();
+	private StaffTabs.Form staffForm;
+	private StaffTabs.MotdForm motdForm;
+	private StaffTabs.NewsForm newsForm;
+	/** The message of the day on Home. */
+	private final JPanel motdRow = PanelParts.column();
+	/** Staff note actions from the panel's own controls: deleting asks first. */
+	private StaffTabs.Actions staffUi;
+	private StaffTabs.Form memberNotesForm;
+	private StaffTabs.Actions staffActions = new StaffTabs.Actions()
+	{
+		@Override
+		public void add(String rsn, String text)
+		{
+		}
+
+		@Override
+		public void delete(String rsn, ClanData.StaffNote note)
+		{
+		}
+	};
+	/** Loads staff notes: about a member (rsn), or the general ones (null). */
+	private java.util.function.Consumer<String> staffLoader = rsn -> { };
+	private StaffTabs.Input staffNotes = new StaffTabs.Input(null, true, null, java.time.Instant.now());
+	private String memberNotesRsn;
+	private StaffTabs.Input memberNotes = new StaffTabs.Input(null, true, null, java.time.Instant.now());
 	/** The event whose details are open. */
 	private String detailsEventId;
 	private final Map<String, JPanel> pages = new HashMap<>();
@@ -228,6 +265,7 @@ class AsgardiansPanel extends PluginPanel
 		pages.put(BINGO, bingoTab);
 		pages.put(GROUPS, groupsTab);
 		pages.put(MEMBERS, membersTab);
+		buildMemberSearch();
 		pages.put(DROPS, statsTab);
 		pages.put(LEADERBOARD, leadersTab);
 		pages.put(PROFILE, statusTab);
@@ -236,6 +274,8 @@ class AsgardiansPanel extends PluginPanel
 		pages.put(PBS, pbsTab);
 		pages.put(SETTINGS, settingsTab);
 		pages.put(EVENT, eventTab);
+		pages.put(STAFF, staffTab);
+		buildStaff();
 
 		header = new PanelChrome.Header(this::refreshPage, () ->
 		{
@@ -281,6 +321,158 @@ class AsgardiansPanel extends PluginPanel
 	void setProfileLoader(java.util.function.Consumer<String> loader)
 	{
 		profileLoader = loader != null ? loader : rsn -> { };
+	}
+
+	/** How the panel loads and changes staff notes. */
+	void setStaffActions(java.util.function.Consumer<String> loader, StaffTabs.Actions actions)
+	{
+		staffLoader = loader;
+		staffActions = actions;
+	}
+
+	/** True when the website says the member is clan staff. */
+	boolean isStaff()
+	{
+		return lastState != null && lastState.getMe() != null && Boolean.TRUE.equals(lastState.getMe().getStaff());
+	}
+
+	/** The clan's message of the day changed (null or empty text: none). Shown on Home. */
+	void updateMotd(ClanData.Motd motd)
+	{
+		motdRow.removeAll();
+		String text = motd != null && motd.getText() != null && !motd.getText().isBlank() ? motd.getText().trim() : null;
+		if (text != null)
+		{
+			Card card = new Card(null).stripe(HIGHLIGHT);
+			card.add(PanelParts.plain("MESSAGE OF THE DAY", HIGHLIGHT));
+			card.add(small(text, PanelParts.TEXT));
+			if (motd.getAuthor() != null)
+			{
+				card.add(small("- " + motd.getAuthor(), QUIET));
+			}
+			card.setAlignmentX(LEFT_ALIGNMENT);
+			motdRow.add(card);
+			motdRow.add(Box.createVerticalStrut(6));
+		}
+		motdRow.setVisible(text != null);
+		if (motdForm != null)
+		{
+			motdForm.current(text);
+		}
+		motdRow.revalidate();
+		motdRow.repaint();
+	}
+
+	/** How a staff change went: "motd" or "news". */
+	void staffResult(String which, String message, boolean error)
+	{
+		if ("motd".equals(which) && motdForm != null)
+		{
+			motdForm.status(message, error);
+		}
+		else if ("news".equals(which) && newsForm != null)
+		{
+			newsForm.status(message, error);
+			if (!error)
+			{
+				newsForm.clearText();
+			}
+		}
+	}
+
+	/** Staff notes arrived: about a member (rsn), or the general ones (null). */
+	void updateStaffNotes(String rsn, StaffTabs.Input input)
+	{
+		if (rsn == null)
+		{
+			staffNotes = input;
+			keepingScroll(staffList, () -> StaffTabs.drawNotes(staffList, null, staffNotes, staffUi));
+		}
+		else if (DropRecorder.sameRsn(rsn, memberNotesRsn))
+		{
+			memberNotes = input;
+			keepingScroll(memberNotesList, () -> StaffTabs.drawNotes(memberNotesList, memberNotesRsn, memberNotes, staffUi));
+		}
+	}
+
+	private void buildStaff()
+	{
+		StaffTabs.Actions forward = staffUi = new StaffTabs.Actions()
+		{
+			@Override
+			public void add(String rsn, String text)
+			{
+				staffActions.add(rsn, text);
+			}
+
+			@Override
+			public void delete(String rsn, ClanData.StaffNote note)
+			{
+				int answer = javax.swing.JOptionPane.showConfirmDialog(AsgardiansPanel.this,
+					"Delete this note for everyone? It can't be undone.", "Delete note", javax.swing.JOptionPane.YES_NO_OPTION);
+				if (answer == javax.swing.JOptionPane.YES_OPTION)
+				{
+					staffActions.delete(rsn, note);
+				}
+			}
+		};
+		staffForm = new StaffTabs.Form("Only clan staff see these, here and on the website. E.g. \"Holding 100m for Saturday's drop party\".", forward);
+		memberNotesForm = new StaffTabs.Form("Only clan staff see notes about members, here and on the website.", forward);
+		StaffTabs.drawNotes(staffList, null, staffNotes, forward);
+		motdForm = new StaffTabs.MotdForm(new StaffTabs.Actions()
+		{
+			@Override
+			public void add(String rsn, String text)
+			{
+			}
+
+			@Override
+			public void delete(String rsn, ClanData.StaffNote note)
+			{
+			}
+
+			@Override
+			public void setMotd(String text)
+			{
+				staffActions.setMotd(text);
+			}
+		});
+		newsForm = new StaffTabs.NewsForm(new StaffTabs.Actions()
+		{
+			@Override
+			public void add(String rsn, String text)
+			{
+			}
+
+			@Override
+			public void delete(String rsn, ClanData.StaffNote note)
+			{
+			}
+
+			@Override
+			public void postNews(String title, String body)
+			{
+				staffActions.postNews(title, body);
+			}
+		});
+		Card motdCard = new Card("Message of the day");
+		motdCard.add(small("Every member sees it at login and on Home.", QUIET));
+		motdCard.gap();
+		motdCard.add(motdForm);
+		addCard(staffTab, motdCard);
+		Card newsCard = new Card("Post to News");
+		newsCard.add(small("Shows on the News page and in chat, like posts made on the website.", QUIET));
+		newsCard.gap();
+		newsCard.add(newsForm);
+		addCard(staffTab, newsCard);
+		addCard(staffTab, StaffTabs.card("Staff notes", staffList, staffForm));
+		memberTab.add(memberProfileColumn);
+		memberProfileColumn.setAlignmentX(LEFT_ALIGNMENT);
+		memberNotesHolder.setAlignmentX(LEFT_ALIGNMENT);
+		memberNotesHolder.add(Box.createVerticalStrut(PanelParts.GAP));
+		memberTab.add(memberNotesHolder);
+		addCard(memberNotesHolder, StaffTabs.card("Staff notes", memberNotesList, memberNotesForm));
+		memberNotesHolder.setVisible(false);
 	}
 
 	void setMembersRefresh(Runnable refresh)
@@ -375,6 +567,9 @@ class AsgardiansPanel extends PluginPanel
 			case MEMBERS:
 				membersRefresh.run();
 				break;
+			case STAFF:
+				staffLoader.accept(null);
+				break;
 			default:
 		}
 	}
@@ -448,7 +643,14 @@ class AsgardiansPanel extends PluginPanel
 				{
 					memberLoading = memberProfile == null;
 					profileLoader.accept(memberRsn);
+					if (isStaff())
+					{
+						staffLoader.accept(memberRsn);
+					}
 				}
+				break;
+			case STAFF:
+				staffLoader.accept(null);
 				break;
 			case HOME:
 				refreshClan.run();
@@ -520,6 +722,10 @@ class AsgardiansPanel extends PluginPanel
 				title = "Settings";
 				sub = "Same as in RuneLite";
 				break;
+			case STAFF:
+				title = "Staff tools";
+				sub = "Staff only";
+				break;
 			default:
 				title = "Personal bests";
 				sub = "Clan records";
@@ -535,6 +741,9 @@ class AsgardiansPanel extends PluginPanel
 
 	private void buildHome()
 	{
+		motdRow.setAlignmentX(LEFT_ALIGNMENT);
+		motdRow.setVisible(false);
+		homeTab.add(motdRow);
 		JPanel grid = new JPanel(new java.awt.GridLayout(0, 2, 6, 6));
 		grid.setOpaque(false);
 		addTile(grid, EVENTS, PanelChrome.Icon.EVENTS, "Events");
@@ -556,6 +765,14 @@ class AsgardiansPanel extends PluginPanel
 		homeTab.add(wide);
 		voiceRow.setAlignmentX(LEFT_ALIGNMENT);
 		homeTab.add(voiceRow);
+		staffHomeRow.setAlignmentX(LEFT_ALIGNMENT);
+		homeTab.add(staffHomeRow);
+		JPanel staffButton = new JPanel(new BorderLayout());
+		staffButton.setOpaque(false);
+		staffButton.add(button("Staff tools", () -> show(STAFF)), BorderLayout.CENTER);
+		staffHomeRow.add(Box.createVerticalStrut(6));
+		staffHomeRow.add(staffButton);
+		staffHomeRow.setVisible(false);
 	}
 
 	private void addTile(JPanel parent, String name, PanelChrome.Icon icon, String label)
@@ -938,8 +1155,47 @@ class AsgardiansPanel extends PluginPanel
 	{
 		if (lastMembers != null)
 		{
-			keepingScroll(membersTab, () -> MembersTabs.draw(membersTab, lastMembers, new MembersTabs.Ui(memberFilter, showOffline), membersUi));
+			memberSearch.getParent().setVisible(lastMembers.getNotConnected() == null);
+			keepingScroll(membersList, () -> MembersTabs.draw(membersList, lastMembers,
+				new MembersTabs.Ui(memberFilter, showOffline, memberSearch.getText()), membersUi));
 		}
+	}
+
+	/** The search box at the top of Members: the list narrows as the member types. */
+	private void buildMemberSearch()
+	{
+		memberSearch.setToolTipText("Type part of a name");
+		memberSearch.setFont(net.runelite.client.ui.FontManager.getRunescapeSmallFont());
+		memberSearch.getDocument().addDocumentListener(new javax.swing.event.DocumentListener()
+		{
+			@Override
+			public void insertUpdate(javax.swing.event.DocumentEvent e)
+			{
+				drawMembers();
+			}
+
+			@Override
+			public void removeUpdate(javax.swing.event.DocumentEvent e)
+			{
+				drawMembers();
+			}
+
+			@Override
+			public void changedUpdate(javax.swing.event.DocumentEvent e)
+			{
+				drawMembers();
+			}
+		});
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setOpaque(false);
+		row.add(PanelParts.plain("Search", QUIET), BorderLayout.WEST);
+		row.add(memberSearch, BorderLayout.CENTER);
+		row.setAlignmentX(LEFT_ALIGNMENT);
+		row.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, row.getPreferredSize().height));
+		membersTab.add(row);
+		membersTab.add(Box.createVerticalStrut(2));
+		membersTab.add(membersList);
+		membersList.setAlignmentX(LEFT_ALIGNMENT);
 	}
 
 	private final MembersTabs.Actions membersUi = new MembersTabs.Actions()
@@ -1039,6 +1295,7 @@ class AsgardiansPanel extends PluginPanel
 		updateFooter(state);
 		redrawProfile();
 		updateTiles();
+		staffHomeRow.setVisible(isStaff());
 	}
 
 	/** The member's own profile: the clan profile, then what the plugin is sending. */
@@ -1103,12 +1360,23 @@ class AsgardiansPanel extends PluginPanel
 		}
 		Integer w = world;
 		String a = activity;
-		keepingScroll(memberTab, () ->
+		keepingScroll(memberProfileColumn, () ->
 		{
-			memberTab.removeAll();
-			ProfileTabs.draw(memberTab, new ProfileTabs.Input(memberRsn, memberProfile, false, memberLoading, memberUnsupported, w, a,
+			memberProfileColumn.removeAll();
+			ProfileTabs.draw(memberProfileColumn, new ProfileTabs.Input(memberRsn, memberProfile, false, memberLoading, memberUnsupported, w, a,
 				null, dropsOf(memberRsn), now()), profileActions);
 		});
+		// Staff see their notes about the member under the profile; the form keeps whatever is being typed.
+		boolean staff = isStaff();
+		memberNotesHolder.setVisible(staff);
+		if (staff && !DropRecorder.sameRsn(memberRsn, memberNotesRsn))
+		{
+			memberNotesRsn = memberRsn;
+			memberNotesForm.about(memberRsn);
+			memberNotes = new StaffTabs.Input(null, true, null, now());
+			StaffTabs.drawNotes(memberNotesList, memberNotesRsn, memberNotes, staffUi);
+			staffLoader.accept(memberRsn);
+		}
 	}
 
 	private final ProfileTabs.Actions profileActions = new ProfileTabs.Actions()

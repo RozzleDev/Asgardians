@@ -100,7 +100,9 @@ public class AsgardiansPlugin extends Plugin
 		WorldType.BETA_WORLD, WorldType.TOURNAMENT_WORLD, WorldType.FRESH_START_WORLD, WorldType.QUEST_SPEEDRUNNING,
 		WorldType.NOSAVE_MODE, WorldType.LAST_MAN_STANDING);
 	/** Raid chests (loot tracker event names) that get the party size. */
-	private static final String[] RAID_EVENTS = {"Chambers of Xeric", "Theatre of Blood", "Tombs of Amascut"};
+	private static final String[] RAID_EVENTS = {"Chambers of Xeric", "Theatre of Blood", "Tombs of Amascut", "Fractured Archive"};
+	/** RuneLite's Loot Tracker name for the Fractured Archive's chest. */
+	static final String FRACTURED_ARCHIVE = "Fractured Archive";
 	/** Group bosses whose NPC loot gets the party size. */
 	private static final Set<String> GROUP_NPCS = Set.of("Nex", "The Nightmare");
 
@@ -306,6 +308,20 @@ public class AsgardiansPlugin extends Plugin
 	private volatile String status;
 	private volatile boolean statusIsError;
 
+	@Inject
+	private net.runelite.client.ui.overlay.worldmap.WorldMapPointManager worldMapPointManager;
+
+	private ClanMap clanMap;
+	/** Clanmates sharing their location, from the website. */
+	private volatile List<ClanMap.Pin> mapPins = List.of();
+	/** Where the member is, when they share it and aren't in an instance; set on the client thread. */
+	private volatile WorldPoint myLocation;
+	private volatile WorldPoint sentLocation;
+	/** Send a new position at most this often. */
+	private static final long LOCATION_RESEND_MILLIS = 15_000;
+	/** Reload clanmates' positions this often while the world map is open. */
+	private static final long MAP_REFRESH_MILLIS = 10_000;
+
 	@Provides
 	AsgardiansConfig provideConfig(ConfigManager configManager)
 	{
@@ -490,6 +506,38 @@ public class AsgardiansPlugin extends Plugin
 		});
 		panel.setProfileLoader(rsn -> executor.execute(() -> fetchProfile(rsn)));
 		panel.setMembersRefresh(() -> executor.execute(this::fetchMemberActivity));
+		panel.setStaffActions(rsn -> executor.execute(() -> staffNotes(rsn, null, null)), new StaffTabs.Actions()
+		{
+			@Override
+			public void add(String rsn, String text)
+			{
+				executor.execute(() -> staffNotes(rsn, text, null));
+			}
+
+			@Override
+			public void delete(String rsn, ClanData.StaffNote note)
+			{
+				executor.execute(() -> staffNotes(rsn, null, note.getId()));
+			}
+
+			@Override
+			public void setMotd(String text)
+			{
+				com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+				body.addProperty("text", text);
+				executor.execute(() -> staffPost("motd", body));
+			}
+
+			@Override
+			public void postNews(String title, String text)
+			{
+				com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+				body.addProperty("title", title);
+				body.addProperty("body", text);
+				executor.execute(() -> staffPost("news", body));
+			}
+		});
+		clanMap = new ClanMap(worldMapPointManager);
 		navButton = NavigationButton.builder()
 			.tooltip("Asgardians Clan")
 			.icon(AsgIcon.create(16))
@@ -511,6 +559,12 @@ public class AsgardiansPlugin extends Plugin
 	protected void shutDown()
 	{
 		chatCommandManager.unregisterCommand(AsgCommands.PREFIX);
+		if (clanMap != null)
+		{
+			ClanMap map = clanMap;
+			clientThread.invoke(map::clear);
+			clanMap = null;
+		}
 		commandProfiles.clear();
 		// Null checks: RuneLite also calls this after a start that failed part way.
 		for (java.util.concurrent.Future<?> task : new java.util.concurrent.Future<?>[]{flushTask, settingsTask, pbTask, clanTask, groupTask})
@@ -555,9 +609,18 @@ public class AsgardiansPlugin extends Plugin
 		if (event.getGameState() == GameState.LOGGED_IN)
 		{
 			onAccountState();
+			// After a hop, a different set of clanmates is on the member's world.
+			drawClanMap();
 		}
 		else if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
+			myLocation = null;
+			nerdLogged = false;
+			motdShown = null;
+			if (clanMap != null)
+			{
+				clanMap.clear();
+			}
 			// Anything waiting goes now; XP and activity start again for whoever logs in next.
 			sendPendingKcs(true);
 			xpSentTick = -1;
@@ -598,7 +661,11 @@ public class AsgardiansPlugin extends Plugin
 			status = null;
 			executor.execute(this::fetchSettings);
 		}
-		if ("shareActivity".equals(event.getKey()))
+		if ("showClanMap".equals(event.getKey()) || "mapOnlyMyWorld".equals(event.getKey()))
+		{
+			clientThread.invokeLater(this::drawClanMap);
+		}
+		if ("shareActivity".equals(event.getKey()) || "shareLocation".equals(event.getKey()))
 		{
 			executor.execute(this::sendActivity);
 			refreshClanPanel();
@@ -642,6 +709,31 @@ public class AsgardiansPlugin extends Plugin
 			raid |= event.getName().startsWith(prefix);
 		}
 		recordLoot(event.getName(), null, event.getItems(), raid);
+		if (isRecording() && config.eventMessages() && isCabbage(event.getName(), event.getItems()))
+		{
+			// The chest's consolation prize for a rough run. The website counts them for the Cabbage high score.
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", new net.runelite.client.chat.ChatMessageBuilder()
+				.append(net.runelite.client.chat.ChatColorType.HIGHLIGHT).append("Asgardians: ")
+				.append(net.runelite.client.chat.ChatColorType.NORMAL)
+				.append("A cabbage! That's going on the clan's Cabbage high score.").build(), null);
+		}
+	}
+
+	/** Loot that is only the Fractured Archive's cabbage. */
+	static boolean isCabbage(String source, Collection<ItemStack> items)
+	{
+		if (!FRACTURED_ARCHIVE.equals(source) || items == null || items.isEmpty())
+		{
+			return false;
+		}
+		for (ItemStack stack : items)
+		{
+			if (stack.getId() != net.runelite.api.gameval.ItemID.CABBAGE)
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	@Subscribe
@@ -679,6 +771,11 @@ public class AsgardiansPlugin extends Plugin
 		}
 		if (type == ChatMessageType.GAMEMESSAGE || type == ChatMessageType.SPAM)
 		{
+			if (!nerdLogged && ChatParsers.isNerdLogWarning(message))
+			{
+				nerdLogged = true;
+				recordNerdLog(now);
+			}
 			if (ChatParsers.isPickpocket(message))
 			{
 				pickpocketTick = client.getTickCount();
@@ -827,6 +924,13 @@ public class AsgardiansPlugin extends Plugin
 					}
 				});
 		}
+		api.get(ApiClient.endpoint(address, "motd"), key, ClanData.Motd.class, result ->
+		{
+			if (result.ok() && account != null && account.getHash() == who.getHash())
+			{
+				setMotd(result.getBody());
+			}
+		});
 		ClanView previous = clanView;
 		clanFetcher.fetch(address, key, withBoards, previous, result ->
 		{
@@ -924,7 +1028,32 @@ public class AsgardiansPlugin extends Plugin
 		{
 			chat(change);
 		}
+		celebrateTiles(now.completedTiles(previous));
 	}
+
+	/** A ding for completed tiles, and fireworks when one was the member's own team's. Client thread. */
+	private void celebrateTiles(List<Boolean> completed)
+	{
+		if (completed.isEmpty())
+		{
+			return;
+		}
+		if (config.tileSound())
+		{
+			// Their own sound effect volume, unless it's muted: they asked for the sound in the plugin settings.
+			int volume = client.getPreferences().getSoundEffectVolume();
+			client.playSoundEffect(TILE_SOUND, volume > 0 ? volume : net.runelite.api.SoundEffectVolume.MEDIUM_HIGH);
+		}
+		Player local = client.getLocalPlayer();
+		if (config.tileFireworks() && completed.contains(true) && local != null)
+		{
+			// The level-up fireworks, on the member's own character and only on their screen.
+			local.createSpotAnim(TILE_FIREWORKS_KEY, net.runelite.api.gameval.SpotanimID.LEVELUP_ANIM, 0, 0);
+		}
+	}
+
+	/** Our own slot for the fireworks, so they don't replace anything the game is showing. */
+	private static final int TILE_FIREWORKS_KEY = 0x45A6;
 
 	/** Reminders 15 minutes before events the member has signed up for. Client thread. */
 	private void sendReminders()
@@ -1405,6 +1534,13 @@ public class AsgardiansPlugin extends Plugin
 
 	/** Ice Barrage landing, the freeze sound. */
 	static final int EGG_SOUND = 171;
+	/** The unique-drop ding of the bosses since Phantom Muspah, DT2's included (sotn_muspah_unique_loot_02). */
+	static final int TILE_SOUND = 6765;
+	/** The clan's message of the day, and the text already shown in chat this login. */
+	private volatile ClanData.Motd motd;
+	private String motdShown;
+	/** A nerd log has been recorded since this login. */
+	private boolean nerdLogged;
 	/** At most this many clan egg messages per check, so a burst doesn't flood chat. */
 	private static final int EGG_MESSAGES_MAX = 5;
 
@@ -2028,6 +2164,7 @@ public class AsgardiansPlugin extends Plugin
 	private int activityTargetTick = -1;
 	private String activitySkill;
 	private int activitySkillTick = -1;
+	private int activitySlayerXpTick = -1;
 	private final Map<Skill, Integer> lastXp = new java.util.EnumMap<>(Skill.class);
 	/** What the member is doing, worked out on the client thread. */
 	private volatile String myActivity;
@@ -2039,13 +2176,19 @@ public class AsgardiansPlugin extends Plugin
 	private volatile long lastActivityFetch;
 	/** Clanmates' activities from the website: lowercase RSN to activity. */
 	private volatile Map<String, String> memberActivities = Map.of();
+	/** Clanmates the website has heard from lately, so they have the plugin: lowercase RSNs. */
+	private volatile Set<String> memberPlugins = Set.of();
 	private final AtomicBoolean fetchingActivity = new AtomicBoolean();
 
 	@Subscribe
 	public void onStatChanged(StatChanged event)
 	{
 		Integer before = lastXp.put(event.getSkill(), event.getXp());
-		if (before != null && event.getXp() > before && !COMBAT_SKILLS.contains(event.getSkill()))
+		if (before != null && event.getXp() > before && event.getSkill() == Skill.SLAYER)
+		{
+			activitySlayerXpTick = client.getTickCount();
+		}
+		else if (before != null && event.getXp() > before && !COMBAT_SKILLS.contains(event.getSkill()))
 		{
 			activitySkill = event.getSkill().getName();
 			activitySkillTick = client.getTickCount();
@@ -2068,10 +2211,12 @@ public class AsgardiansPlugin extends Plugin
 		}
 		Widget bank = client.getWidget(InterfaceID.Bankmain.UNIVERSE);
 		WorldPoint where = local.getLocalLocation() != null ? WorldPoint.fromLocalInstance(client, local.getLocalLocation()) : null;
+		net.runelite.api.WorldView top = client.getTopLevelWorldView();
+		myLocation = config.shareLocation() && top != null && !top.isInstance() ? local.getWorldLocation() : null;
 		myActivity = ActivityTracker.describe(new ActivityTracker.Snapshot(tick,
 			client.getVarbitValue(VarbitID.RAIDS_CLIENT_INDUNGEON) == 1,
 			client.getVarbitValue(VarbitID.TOB_CLIENT_PARTYSTATUS) >= 2,
-			activityTarget, activityTargetTick, client.getVarpValue(VarPlayerID.SLAYER_COUNT),
+			activityTarget, activityTargetTick, client.getVarpValue(VarPlayerID.SLAYER_COUNT), activitySlayerXpTick,
 			activitySkill, activitySkillTick, bank != null && !bank.isHidden(), where != null ? where.getRegionID() : -1));
 		executor.execute(this::sendActivity);
 	}
@@ -2089,17 +2234,29 @@ public class AsgardiansPlugin extends Plugin
 		}
 		boolean share = config.shareActivity();
 		String activity = share ? myActivity : null;
-		if (java.util.Objects.equals(activity, sentActivity) && share == sentSharing && now - sentActivityAt < ACTIVITY_RESEND_MILLIS)
+		WorldPoint location = myLocation;
+		boolean moved = !java.util.Objects.equals(location, sentLocation) && now - sentActivityAt >= LOCATION_RESEND_MILLIS;
+		if (java.util.Objects.equals(activity, sentActivity) && share == sentSharing && now - sentActivityAt < ACTIVITY_RESEND_MILLIS
+			&& !moved && (location == null) == (sentLocation == null))
 		{
 			return;
 		}
 		sentActivity = activity;
 		sentSharing = share;
 		sentActivityAt = now;
+		sentLocation = location;
 		com.google.gson.JsonObject body = new com.google.gson.JsonObject();
 		body.addProperty("sharing", share);
 		body.addProperty("activity", activity);
 		body.addProperty("world", client.getWorld());
+		// Only the member's own position, only with "Share my location on the map" on, never in instances.
+		body.addProperty("location", location != null);
+		if (location != null)
+		{
+			body.addProperty("x", location.getX());
+			body.addProperty("y", location.getY());
+			body.addProperty("plane", location.getPlane());
+		}
 		api.post(ApiClient.endpoint(address, "members/activity"), key, body, com.google.gson.JsonObject.class, result ->
 		{
 			if (result.getStatus() == 404)
@@ -2108,6 +2265,55 @@ public class AsgardiansPlugin extends Plugin
 				activityUnsupportedUntil = System.currentTimeMillis() + ACTIVITY_RETRY_MILLIS;
 			}
 		});
+	}
+
+	/** While the world map is open, reloads where clanmates are every few seconds. Client thread. */
+	private void maybeReloadMap()
+	{
+		if (!config.showClanMap() || System.currentTimeMillis() - lastActivityFetch < MAP_REFRESH_MILLIS)
+		{
+			return;
+		}
+		Widget map = client.getWidget(InterfaceID.Worldmap.UNIVERSE);
+		if (map != null && !map.isHidden())
+		{
+			lastActivityFetch = System.currentTimeMillis();
+			executor.execute(this::fetchMemberActivity);
+		}
+	}
+
+	/** Puts clanmates on the world map, or takes them off. Client thread. */
+	private void drawClanMap()
+	{
+		ClanMap map = clanMap;
+		if (map == null)
+		{
+			return;
+		}
+		if (!config.showClanMap() || client.getGameState() != GameState.LOGGED_IN)
+		{
+			map.clear();
+			return;
+		}
+		Player local = client.getLocalPlayer();
+		String me = local != null && local.getName() != null ? Text.sanitize(local.getName()) : null;
+		// Worlds from clan chat are the freshest.
+		Map<String, Integer> worlds = new java.util.HashMap<>();
+		net.runelite.api.clan.ClanChannel channel = client.getClanChannel();
+		if (channel != null)
+		{
+			for (net.runelite.api.clan.ClanChannelMember m : channel.getMembers())
+			{
+				worlds.put(Text.sanitize(m.getName()).toLowerCase(java.util.Locale.UK), m.getWorld());
+			}
+		}
+		List<ClanMap.Pin> pins = new ArrayList<>();
+		for (ClanMap.Pin p : mapPins)
+		{
+			Integer w = worlds.get(p.getName().toLowerCase(java.util.Locale.UK));
+			pins.add(w != null ? new ClanMap.Pin(p.getName(), w, p.getAt(), p.getActivity()) : p);
+		}
+		map.show(ClanMap.shown(pins, me, client.getWorld(), config.mapOnlyMyWorld()), client.getWorld());
 	}
 
 	/** Loads what clanmates are doing. Executor thread. */
@@ -2131,14 +2337,30 @@ public class AsgardiansPlugin extends Plugin
 			if (result.ok() && result.getBody().getMembers() != null)
 			{
 				Map<String, String> map = new java.util.HashMap<>();
+				Set<String> plugins = new java.util.HashSet<>();
+				List<ClanMap.Pin> pins = new ArrayList<>();
 				for (ClanData.MemberActivity m : result.getBody().getMembers())
 				{
-					if (m != null && m.getRsn() != null && m.getActivity() != null)
+					if (m == null || m.getRsn() == null)
 					{
-						map.put(Text.sanitize(m.getRsn()).toLowerCase(java.util.Locale.UK), m.getActivity());
+						continue;
+					}
+					String lower = Text.sanitize(m.getRsn()).toLowerCase(java.util.Locale.UK);
+					plugins.add(lower);
+					if (m.getActivity() != null)
+					{
+						map.put(lower, m.getActivity());
+					}
+					if (m.getX() != null && m.getY() != null)
+					{
+						pins.add(new ClanMap.Pin(Text.sanitize(m.getRsn()), m.getWorld() != null ? m.getWorld() : 0,
+							new WorldPoint(m.getX(), m.getY(), m.getPlane() != null ? m.getPlane() : 0), m.getActivity()));
 					}
 				}
 				memberActivities = map;
+				memberPlugins = plugins;
+				mapPins = pins;
+				clientThread.invokeLater(this::drawClanMap);
 				activityUnsupported = false;
 			}
 			else if (result.getStatus() == 404 || (result.getStatus() >= 200 && result.getStatus() < 300))
@@ -2148,6 +2370,55 @@ public class AsgardiansPlugin extends Plugin
 			}
 			refreshClanPanel();
 		});
+	}
+
+	/**
+	 * Staff notes: loads them, adds one (text) or deletes one (id). About a member when rsn is set, else the general
+	 * notes. The website only answers clan staff. Executor thread.
+	 */
+	private void staffNotes(String rsn, String text, String deleteId)
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		AsgardiansPanel target = panel;
+		if (target == null)
+		{
+			return;
+		}
+		if (key == null || !sharing)
+		{
+			SwingUtilities.invokeLater(() -> target.updateStaffNotes(rsn, new StaffTabs.Input(null, false,
+				"Turn on \"Share my data with Asgardians\" and log in to see staff notes.", java.time.Instant.now())));
+			return;
+		}
+		String path = rsn != null ? "staff/members/" + rsn.replace('\u00a0', ' ') + "/notes" : "staff/notes";
+		java.util.function.Consumer<ApiClient.GetResult<ClanData.StaffNoteList>> done = result ->
+		{
+			String error = result.ok() ? null
+				: result.getStatus() == 403 ? "Only clan staff can see staff notes."
+				: result.getStatus() == 404 || (result.getStatus() >= 200 && result.getStatus() < 300)
+					? "The clan website doesn't have staff notes yet."
+				: text != null ? "Your note couldn't be saved. Try again in a moment." : "Notes couldn't be loaded. Try again in a moment.";
+			List<ClanData.StaffNote> notes = result.ok() && result.getBody() != null && result.getBody().getNotes() != null
+				? result.getBody().getNotes() : null;
+			SwingUtilities.invokeLater(() -> target.updateStaffNotes(rsn, new StaffTabs.Input(notes, false, error, java.time.Instant.now())));
+		};
+		okhttp3.HttpUrl url = ApiClient.endpoint(address, path);
+		if (text != null)
+		{
+			com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+			body.addProperty("text", text);
+			api.post(url, key, body, ClanData.StaffNoteList.class, done);
+		}
+		else if (deleteId != null)
+		{
+			api.delete(ApiClient.endpoint(address, path + "/" + deleteId), key, ClanData.StaffNoteList.class, done);
+		}
+		else
+		{
+			api.get(url, key, ClanData.StaffNoteList.class, done);
+		}
 	}
 
 	/** Loads a clanmate's profile for the panel. Executor thread. */
@@ -2184,6 +2455,7 @@ public class AsgardiansPlugin extends Plugin
 			return new MembersTabs.Input(List.of(), me, null, null, config.shareActivity(), activityUnsupported, notConnected);
 		}
 		Map<String, String> activities = memberActivities;
+		Set<String> plugins = memberPlugins;
 		Map<String, MembersTabs.Member> members = new LinkedHashMap<>();
 		net.runelite.api.clan.ClanChannel channel = client.getClanChannel();
 		if (channel != null)
@@ -2192,7 +2464,7 @@ public class AsgardiansPlugin extends Plugin
 			{
 				String name = Text.sanitize(m.getName());
 				String lower = name.toLowerCase(java.util.Locale.UK);
-				members.put(lower, new MembersTabs.Member(name, m.getWorld(), activities.get(lower)));
+				members.put(lower, new MembersTabs.Member(name, m.getWorld(), activities.get(lower), plugins.contains(lower)));
 			}
 		}
 		ClanSettings settings = client.getClanSettings();
@@ -2201,7 +2473,8 @@ public class AsgardiansPlugin extends Plugin
 			for (net.runelite.api.clan.ClanMember m : settings.getMembers())
 			{
 				String name = Text.sanitize(m.getName());
-				members.putIfAbsent(name.toLowerCase(java.util.Locale.UK), new MembersTabs.Member(name, null, null));
+				String lower = name.toLowerCase(java.util.Locale.UK);
+				members.putIfAbsent(lower, new MembersTabs.Member(name, null, null, plugins.contains(lower)));
 			}
 		}
 		return new MembersTabs.Input(new ArrayList<>(members.values()), me, client.getWorld(), myActivity, config.shareActivity(),
@@ -2257,6 +2530,7 @@ public class AsgardiansPlugin extends Plugin
 			keepCount = (local.getSkullIcon() == -1 ? 3 : 0) + (protectItem ? 1 : 0);
 		}
 		death.setKeepCount(keepCount);
+		death.setMessage(Death.message(config.deathMessage(), death.getKiller().getName(), death.getArea(), 0));
 		if (!death.isSafe())
 		{
 			Death.Split split = Death.split(heldItems(), keepCount);
@@ -2269,6 +2543,11 @@ public class AsgardiansPlugin extends Plugin
 			death.setLostItems(lost);
 		}
 
+		if (death.getMessage() != null)
+		{
+			// Now the value lost is known.
+			death.setMessage(Death.message(config.deathMessage(), death.getKiller().getName(), death.getArea(), death.getValueLost()));
+		}
 		long now = System.currentTimeMillis();
 		Record record = new Record(Record.Type.death, java.time.Instant.ofEpochMilli(now).toString(), client.getWorld());
 		record.createdMillis = now;
@@ -2279,6 +2558,78 @@ public class AsgardiansPlugin extends Plugin
 			record.setSource(new Record.Source(killer.getName(), killer.getNpcId()));
 		}
 		submit(record, settings.getScreenshots().isDeaths());
+	}
+
+	/** A new message of the day: onto Home, and into chat once a login (again if staff change it). Any thread. */
+	private void setMotd(ClanData.Motd next)
+	{
+		motd = next;
+		AsgardiansPanel target = panel;
+		if (target != null)
+		{
+			SwingUtilities.invokeLater(() -> target.updateMotd(next));
+		}
+		clientThread.invokeLater(() ->
+		{
+			String text = next != null && next.getText() != null ? next.getText().trim() : "";
+			if (text.isEmpty() || text.equals(motdShown) || !config.motdAtLogin()
+				|| client.getGameState() != GameState.LOGGED_IN)
+			{
+				return;
+			}
+			motdShown = text;
+			chat("Message of the day: " + text + (next.getAuthor() != null ? " (" + next.getAuthor() + ")" : ""));
+		});
+	}
+
+	/** Staff set the message of the day (empty clears it) or post to News. Executor thread. */
+	private void staffPost(String which, com.google.gson.JsonObject body)
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		AsgardiansPanel target = panel;
+		if (target == null)
+		{
+			return;
+		}
+		if (key == null || !sharing)
+		{
+			SwingUtilities.invokeLater(() -> target.staffResult(which, "Log in with sharing on first.", true));
+			return;
+		}
+		boolean news = "news".equals(which);
+		@SuppressWarnings("unchecked")
+		Class<Object> type = (Class<Object>) (news ? ClanData.Announcement.class : ClanData.Motd.class);
+		api.post(ApiClient.endpoint(address, news ? "staff/announcements" : "staff/motd"), key, body, type, result ->
+			{
+				int status = result.getStatus();
+				boolean ok = status >= 200 && status < 300 && result.getBody() != null;
+				String message = ok ? (news ? "Posted to News." : body.get("text").getAsString().isEmpty() ? "Cleared." : "Saved. Members see it at their next login.")
+					: status == 403 ? "Only clan staff can do that."
+					: status == 404 || (status >= 200 && status < 300) ? "The clan website can't do this yet."
+					: "That didn't work. Try again in a moment.";
+				SwingUtilities.invokeLater(() -> target.staffResult(which, message, !ok));
+				if (ok && !news)
+				{
+					setMotd((ClanData.Motd) result.getBody());
+				}
+				else if (ok)
+				{
+					refreshClan(false);
+				}
+			});
+	}
+
+	/** Five hours fifty played: the game's first 6-hour logout warning. Counted once a login. Client thread. */
+	private void recordNerdLog(long now)
+	{
+		Record record = DropRecorder.newRecord(Record.Type.nerdlog, client.getWorld(), now);
+		submit(record, false);
+		if (config.eventMessages())
+		{
+			chat("Nerd log! 5 hours 50 played. That's going on the clan's Nerd log high score.");
+		}
 	}
 
 	/** Inventory and equipment, merged by item. */
@@ -2649,6 +3000,7 @@ public class AsgardiansPlugin extends Plugin
 			return;
 		}
 		updateActivity(local);
+		maybeReloadMap();
 		maybeSendXp();
 		sendPendingKcs(false);
 		Map<Integer, Integer> captured = clogCapture.finishIfQuiet(client.getTickCount());

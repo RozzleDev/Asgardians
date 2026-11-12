@@ -92,6 +92,9 @@ final class AsgCommands
 				return news(clan);
 			case "drops":
 				return drops(clan, rest);
+			case "cabbage":
+			case "cabbages":
+				return cabbages(clan, rest);
 			case "pb":
 				return pb(clan, rest, sender);
 			default:
@@ -102,7 +105,7 @@ final class AsgCommands
 	static String help()
 	{
 		return new ChatMessageBuilder().append(ChatColorType.HIGHLIGHT).append("Asgardians: ").append(ChatColorType.NORMAL)
-			.append("!asg groups, events, bingo, sotw, botw, news, drops [week/month/year/all], pb [boss], credit, rank, ehb, ehp, profile, eggs")
+			.append("!asg groups, events, bingo, sotw, botw, news, drops [week/month/year/all], cabbage, pb [boss], credit, rank, ehb, ehp, profile, eggs")
 			.build();
 	}
 
@@ -270,6 +273,23 @@ final class AsgCommands
 			if (board.getTitle() != null && board.getTitle().toLowerCase(Locale.UK).startsWith("drop"))
 			{
 				return rows(start("Drops " + periodLabel(period)), board.getRows()).build();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The Cabbage high score: who's had the most consolation cabbages from the Fractured Archive's chest, from the
+	 * board titled "Cabbages". This month unless week, year or all is asked for.
+	 */
+	static String cabbages(Clan clan, String rest)
+	{
+		String period = period(rest);
+		for (ClanData.Leaderboard board : boards(clan, period))
+		{
+			if (board.getTitle() != null && board.getTitle().toLowerCase(Locale.UK).startsWith("cabbage"))
+			{
+				return rows(start("Cabbage high score " + periodLabel(period)), board.getRows()).build();
 			}
 		}
 		return null;

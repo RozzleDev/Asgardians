@@ -499,6 +499,51 @@ class ClanView
 		return out;
 	}
 
+	/**
+	 * Tiles completed since the previous view on the boards of events the member is in: one entry per tile, true when
+	 * it was the member's own team.
+	 */
+	List<Boolean> completedTiles(ClanView previous)
+	{
+		List<Boolean> out = new ArrayList<>();
+		if (previous == null)
+		{
+			return out;
+		}
+		Map<String, ClanData.Tile> before = new HashMap<>();
+		for (EventView view : previous.getEvents())
+		{
+			for (ClanData.Team t : view.boardTeams())
+			{
+				ClanData.Board board = view.boardOf(t.getId());
+				for (ClanData.Tile tile : board != null && board.getTiles() != null ? board.getTiles() : List.<ClanData.Tile>of())
+				{
+					before.put(tileKey(view.getEvent().getId(), t.getId(), tile.getId()), tile);
+				}
+			}
+		}
+		for (EventView view : events)
+		{
+			if (!view.getEvent().isIn())
+			{
+				continue;
+			}
+			for (ClanData.Team t : view.boardTeams())
+			{
+				ClanData.Board board = view.boardOf(t.getId());
+				for (ClanData.Tile tile : board != null && board.getTiles() != null ? board.getTiles() : List.<ClanData.Tile>of())
+				{
+					ClanData.Tile old = before.get(tileKey(view.getEvent().getId(), t.getId(), tile.getId()));
+					if (old != null && tile.isComplete() && !old.isComplete())
+					{
+						out.add(OWN_BOARD.equals(t.getId()) || (t.getId() != null && t.getId().equals(view.getEvent().getTeamId())));
+					}
+				}
+			}
+		}
+		return out;
+	}
+
 	/** Identifies one tile on one team's board. */
 	static String tileKey(String eventId, String teamId, String tileId)
 	{

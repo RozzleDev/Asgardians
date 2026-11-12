@@ -33,6 +33,21 @@ final class MembersTabs
 		Integer world;
 		/** What they're doing, when they share it. */
 		String activity;
+		/** They have the plugin: the website has heard from it lately. */
+		boolean plugin;
+
+		Member(String name, Integer world, String activity)
+		{
+			this(name, world, activity, false);
+		}
+
+		Member(String name, Integer world, String activity, boolean plugin)
+		{
+			this.name = name;
+			this.world = world;
+			this.activity = activity;
+			this.plugin = plugin;
+		}
 	}
 
 	@Value
@@ -58,6 +73,20 @@ final class MembersTabs
 	{
 		String filter;
 		boolean showOffline;
+		/** Part of a name to look for; empty shows everyone. */
+		String search;
+
+		Ui(String filter, boolean showOffline)
+		{
+			this(filter, showOffline, "");
+		}
+
+		Ui(String filter, boolean showOffline, String search)
+		{
+			this.filter = filter;
+			this.showOffline = showOffline;
+			this.search = search != null ? search.trim() : "";
+		}
 	}
 
 	interface Actions
@@ -70,6 +99,9 @@ final class MembersTabs
 
 		void openProfile(String rsn);
 	}
+
+	/** The small ASG badge after the names of members with the plugin. */
+	private static final javax.swing.ImageIcon PLUGIN_BADGE = new javax.swing.ImageIcon(AsgIcon.create(11));
 
 	private MembersTabs()
 	{
@@ -94,6 +126,21 @@ final class MembersTabs
 		}
 	}
 
+	/** The name has the searched-for letters in it, ignoring case and spaces. Empty matches everyone. */
+	static boolean named(Member m, String search)
+	{
+		if (search == null || search.isBlank())
+		{
+			return true;
+		}
+		return squash(m.getName()).contains(squash(search));
+	}
+
+	private static String squash(String s)
+	{
+		return s.replace('\u00a0', ' ').replace(" ", "").replace("_", "").replace("-", "").toLowerCase(Locale.UK);
+	}
+
 	static int online(Input in)
 	{
 		int n = 0;
@@ -115,6 +162,7 @@ final class MembersTabs
 			return;
 		}
 		String filter = filter(ui.getFilter());
+		String search = ui.getSearch();
 		addCard(column, PanelParts.dropdowns(PanelParts.dropdown(FILTERS, FILTERS.indexOf(filter), i -> actions.filter(FILTERS.get(i))),
 			PanelParts.checkbox("Show offline", ui.isShowOffline(), () -> actions.showOffline(!ui.isShowOffline()))));
 
@@ -139,7 +187,7 @@ final class MembersTabs
 		List<Member> offline = new ArrayList<>();
 		for (Member m : sorted(in.getMembers()))
 		{
-			if (in.getMe() != null && DropRecorder.sameRsn(m.getName(), in.getMe()))
+			if ((in.getMe() != null && DropRecorder.sameRsn(m.getName(), in.getMe())) || !named(m, search))
 			{
 				continue;
 			}
@@ -173,7 +221,8 @@ final class MembersTabs
 		if (sameWorld.isEmpty() && (others.isEmpty() || filter.equals("On my world")))
 		{
 			Card card = new Card(null);
-			card.add(small(online(in) <= 1 ? "No other clanmates are online." : "Nobody online matches that.", QUIET));
+			card.add(small(!search.isEmpty() ? "Nobody online is called that." + (ui.isShowOffline() ? "" : " Tick Show offline to look through everyone.")
+				: online(in) <= 1 ? "No other clanmates are online." : "Nobody online matches that.", QUIET));
 			addCard(column, card);
 		}
 		if (ui.isShowOffline() && !offline.isEmpty())
@@ -189,7 +238,7 @@ final class MembersTabs
 		JPanel note = PanelParts.column();
 		note.add(small(in.isActivityUnsupported()
 			? "Activities show once the clan website supports them. Worlds come from clan chat."
-			: "Clanmates who turn sharing off show as Online with their world.", QUIET));
+			: "Clanmates who turn sharing off show as Online with their world. The ASG badge means they have the plugin.", QUIET));
 		note.setAlignmentX(JPanel.LEFT_ALIGNMENT);
 		column.add(note);
 	}
@@ -226,7 +275,15 @@ final class MembersTabs
 		JPanel top = new JPanel(new BorderLayout(5, 0));
 		top.setOpaque(false);
 		top.add(PanelParts.dotIcon(on ? GOOD : PanelParts.LINE), BorderLayout.WEST);
-		top.add(PanelParts.bold(m.getName(), on ? TEXT : QUIET), BorderLayout.CENTER);
+		javax.swing.JLabel name = PanelParts.bold(m.getName(), on ? TEXT : QUIET);
+		if (m.isPlugin())
+		{
+			name.setIcon(PLUGIN_BADGE);
+			name.setHorizontalTextPosition(javax.swing.SwingConstants.LEFT);
+			name.setIconTextGap(4);
+			name.setToolTipText(m.getName() + " has the Asgardians plugin");
+		}
+		top.add(name, BorderLayout.CENTER);
 		if (on)
 		{
 			top.add(PanelParts.plain("W" + m.getWorld(), sameWorld ? GOOD : QUIET), BorderLayout.EAST);

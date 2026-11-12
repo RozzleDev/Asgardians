@@ -163,6 +163,8 @@ final class ClanData
 		private String rsn;
 		/** e.g. deputy_owner, opal, og_gamer. */
 		private String rank;
+		/** True for clan staff, who get staff notes in the panel. Only sent on GET /plugin/me. */
+		private Boolean staff;
 		private Integer daysInClan;
 		private Long splitCredit;
 		private boolean discordLinked;
@@ -229,6 +231,35 @@ final class ClanData
 		private String value;
 	}
 
+	/** GET /plugin/motd: the clan's message of the day (text null or empty when there isn't one), and the reply to POST /plugin/staff/motd. */
+	@Data
+	static class Motd
+	{
+		private String text;
+		/** The staff member who set it. */
+		private String author;
+		/** When it was set (ISO-8601). */
+		private String at;
+	}
+
+	/** GET /plugin/staff/notes and /plugin/staff/members/{rsn}/notes, and the reply to adding or deleting one. Staff only. */
+	@Data
+	static class StaffNoteList
+	{
+		private List<StaffNote> notes;
+	}
+
+	@Data
+	static class StaffNote
+	{
+		private String id;
+		private String text;
+		/** The staff member who wrote it. */
+		private String author;
+		/** When it was written (ISO-8601). */
+		private String at;
+	}
+
 	/** GET /plugin/members/activity: what online clanmates are doing, for the Members page. */
 	@Data
 	static class MemberActivityList
@@ -245,6 +276,10 @@ final class ClanData
 		private Integer world;
 		/** When it was last reported (ISO-8601). */
 		private String at;
+		/** Where they are, only for members sharing their location (never inside instances). */
+		private Integer x;
+		private Integer y;
+		private Integer plane;
 	}
 
 	@Data

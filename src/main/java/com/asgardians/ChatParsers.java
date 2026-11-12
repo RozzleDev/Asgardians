@@ -7,6 +7,18 @@ import lombok.Value;
 /** Parses the game and clan messages the drop recorder listens for. Input is chat text with tags already removed. */
 final class ChatParsers
 {
+	private static final java.util.regex.Pattern LOGOUT_WARNING = java.util.regex.Pattern.compile(
+		"You will be logged out in approximately (\\d+) minutes?\\.");
+	/** The warning at 5 hours 50 minutes played: the only one that counts as a nerd log. */
+	static final int NERD_LOG_MINUTES = 10;
+
+	/** True for the game's first 6-hour logout warning (10 minutes to go), not the 4-hour break reminder or later ones. */
+	static boolean isNerdLogWarning(String message)
+	{
+		java.util.regex.Matcher m = LOGOUT_WARNING.matcher(message);
+		return m.find() && Integer.parseInt(m.group(1)) == NERD_LOG_MINUTES;
+	}
+
 	/** "Your Vorkath kill count is: 512." / "Your completed Chambers of Xeric count is: 50." */
 	private static final Pattern KILL_COUNT = Pattern.compile(
 		"^Your (?:completed |subdued )?(.+?) (?:kill |success |completion )?count is: ([\\d,]+)\\.?$");

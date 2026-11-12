@@ -46,7 +46,7 @@ public class AsgCommandsTest
 		AsgCommands.Clan c = clan(null, null, Map.of(), null);
 		assertNull(AsgCommands.answer("dance", "Rozzle", c));
 		assertNull(AsgCommands.answer("groups", "Rozzle", c));
-		assertEquals("Asgardians: !asg groups, events, bingo, sotw, botw, news, drops [week/month/year/all], pb [boss], credit, rank, ehb, ehp, profile, eggs",
+		assertEquals("Asgardians: !asg groups, events, bingo, sotw, botw, news, drops [week/month/year/all], cabbage, pb [boss], credit, rank, ehb, ehp, profile, eggs",
 			plain(AsgCommands.answer("", "Rozzle", c)));
 	}
 
@@ -94,6 +94,12 @@ public class AsgCommandsTest
 		assertEquals("Drops this week: no entries yet.", plain(AsgCommands.answer("drops week", "Rozzle", c)));
 		assertEquals("Drops all time: 1. pricey 9.1B", plain(AsgCommands.answer("drops all", "Rozzle", c)));
 		assertNull(AsgCommands.answer("drops year", "Rozzle", c));
+
+		Map<String, List<ClanData.Leaderboard>> cab = Map.of("month",
+			boards("[{\"title\":\"Cabbages\",\"rows\":[{\"rank\":1,\"rsn\":\"Thor\",\"value\":\"7\"},{\"rank\":2,\"rsn\":\"Clo\",\"value\":\"3\"}]}]"));
+		assertEquals("Cabbage high score this month: 1. Thor 7 · 2. Clo 3",
+			plain(AsgCommands.answer("cabbage", "Rozzle", clan(null, null, cab, null))));
+		assertNull(AsgCommands.answer("cabbage", "Rozzle", c));
 	}
 
 	@Test

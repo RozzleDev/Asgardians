@@ -59,6 +59,26 @@ class Death
 	/** How many items the player keeps on a dangerous death (3, 0 when skulled, +1 with Protect Item, 0 for UIM). */
 	private int keepCount;
 	private List<Record.Item> lostItems;
+	/** The member's own words for the Discord post, from "My death message", with {killer}, {place} and {lost} filled in. */
+	private String message;
+
+	/** The longest death message sent. */
+	static final int MESSAGE_LENGTH = 200;
+
+	/** The member's death message with its placeholders filled in, or null when they haven't written one. */
+	static String message(String template, String killer, String place, long valueLost)
+	{
+		if (template == null || template.isBlank())
+		{
+			return null;
+		}
+		String lost = valueLost > 0 ? net.runelite.client.util.QuantityFormatter.quantityToStackSize(valueLost) + " gp" : "nothing";
+		String out = template.trim()
+			.replace("{killer}", killer != null ? killer : "something")
+			.replace("{place}", place != null ? place : "somewhere")
+			.replace("{lost}", lost);
+		return out.length() > MESSAGE_LENGTH ? out.substring(0, MESSAGE_LENGTH) : out;
+	}
 
 	/** One stack the player had at death. */
 	@Value

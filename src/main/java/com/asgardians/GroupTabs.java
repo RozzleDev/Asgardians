@@ -278,7 +278,7 @@ final class GroupTabs
 			: "\"New groups in chat\" is off in the plugin settings, so only the gold bells (sent to everyone by clan staff) ring.", QUIET));
 		card.add(small(bells.isScreenOn()
 			? "The screen icon also shows it on screen for a few seconds."
-			: "\"New groups on screen\" is off in the plugin settings, so nothing shows on screen.", QUIET));
+			: "On-screen alerts are off. To see new groups on screen too, turn on \"New groups on screen\" in the settings.", QUIET));
 		card.gap();
 		for (ClanData.GroupActivity a : activities)
 		{
