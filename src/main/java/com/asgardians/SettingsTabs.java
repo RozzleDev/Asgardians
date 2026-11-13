@@ -24,6 +24,27 @@ final class SettingsTabs
 		String key;
 		String name;
 		boolean byDefault;
+		/** Above 0: a 0-max slider (a volume, in %) with this default, rather than a switch. */
+		int slider;
+
+		Setting(String key, String name, boolean byDefault)
+		{
+			this(key, name, byDefault, 0);
+		}
+
+		Setting(String key, String name, boolean byDefault, int slider)
+		{
+			this.key = key;
+			this.name = name;
+			this.byDefault = byDefault;
+			this.slider = slider;
+		}
+
+		/** A volume slider, 0-100%. */
+		static Setting volume(String key, String name, int byDefault)
+		{
+			return new Setting(key, name, false, byDefault);
+		}
 	}
 
 	@Value
@@ -47,11 +68,14 @@ final class SettingsTabs
 		new Group("Events and news", List.of(
 			new Setting("eventMessages", "Event messages in chat", true),
 			new Setting("tileSound", "Ding when my team completes a tile", true),
+			new Setting("tileSoundOnlyMine", "Only ding for my own tiles", false),
+			Setting.volume("tileVolume", "Tile ding volume", 75),
 			new Setting("tileFireworks", "Fireworks for my team's tiles", true),
 			new Setting("motdAtLogin", "Message of the day at login", true),
 			new Setting("newsMessages", "Announcements in chat", true),
 			new Setting("teamBadges", "Team badges in clan chat", true),
-			new Setting("showCodeword", "Show event codeword", true)), null),
+			new Setting("showCodeword", "Show event codeword", true),
+			new Setting("codewordDetailed", "Detailed codeword box", false)), null),
 		new Group("Groups", List.of(
 			new Setting("groupAlerts", "New groups in chat", true),
 			new Setting("groupOverlay", "New groups on screen", false),
@@ -63,7 +87,8 @@ final class SettingsTabs
 			"Clanmates who share their location show on your world map."),
 		new Group("Handeggs", List.of(
 			new Setting("eggMessages", "Egg messages in chat", true),
-			new Setting("eggSound", "Sound when egged", true)), null));
+			new Setting("eggSound", "Sound when egged", true),
+			Setting.volume("eggVolume", "Egg sound volume", 75)), null));
 
 	private SettingsTabs()
 	{
@@ -74,6 +99,48 @@ final class SettingsTabs
 	{
 		String saved = settings.get(s.getKey());
 		return saved == null ? s.isByDefault() : Boolean.parseBoolean(saved.trim());
+	}
+
+	/** A volume setting's value, 0-100: what's saved, else its default. */
+	static int percent(AsgardiansPanel.Settings settings, Setting s)
+	{
+		String saved = settings.get(s.getKey());
+		try
+		{
+			return saved == null ? s.getSlider() : Math.max(0, Math.min(100, Integer.parseInt(saved.trim())));
+		}
+		catch (NumberFormatException e)
+		{
+			return s.getSlider();
+		}
+	}
+
+	/** The name and its % on top, a slider underneath. Saved when the member lets go. */
+	private static Card slider(AsgardiansPanel.Settings settings, Setting s)
+	{
+		int value = percent(settings, s);
+		Card card = new Card(null);
+		card.setBorder(new EmptyBorder(6, 8, 6, 8));
+		javax.swing.JLabel shown = PanelParts.plain(value == 0 ? "Off" : value + "%", QUIET);
+		JPanel top = new JPanel(new BorderLayout(6, 0));
+		top.setOpaque(false);
+		top.add(PanelParts.cut(s.getName(), TEXT), BorderLayout.CENTER);
+		top.add(shown, BorderLayout.EAST);
+		card.addWide(top);
+		javax.swing.JSlider bar = new javax.swing.JSlider(0, 100, value);
+		bar.setOpaque(false);
+		bar.setFocusable(false);
+		bar.addChangeListener(e ->
+		{
+			int v = bar.getValue();
+			shown.setText(v == 0 ? "Off" : v + "%");
+			if (!bar.getValueIsAdjusting())
+			{
+				settings.set(s.getKey(), String.valueOf(v));
+			}
+		});
+		card.addWide(bar);
+		return card;
 	}
 
 	static void draw(JPanel column, AsgardiansPanel.Settings settings, Runnable redraw)
@@ -98,6 +165,14 @@ final class SettingsTabs
 			}
 			for (Setting s : group.getSettings())
 			{
+				if (s.getSlider() > 0)
+				{
+					column.add(Box.createVerticalStrut(4));
+					Card card = slider(settings, s);
+					card.setAlignmentX(JPanel.LEFT_ALIGNMENT);
+					column.add(card);
+					continue;
+				}
 				boolean on = value(settings, s);
 				Card card = new Card(null);
 				card.setBorder(new EmptyBorder(6, 8, 6, 8));

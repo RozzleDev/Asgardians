@@ -371,6 +371,25 @@ public class NewPagesTest
 				public void fold(String title) { }
 			});
 		assertEquals(25, count(column, ClanTabs.BingoTile.class));
+		// Both teams' boards came, so a team picker sits above the board.
+		assertTrue(hasLabel(column, "(yours)"));
+	}
+
+	private static boolean hasLabel(java.awt.Container c, String part)
+	{
+		for (java.awt.Component child : c.getComponents())
+		{
+			if (child instanceof javax.swing.JLabel && ((javax.swing.JLabel) child).getText() != null
+				&& ((javax.swing.JLabel) child).getText().contains(part))
+			{
+				return true;
+			}
+			if (child instanceof java.awt.Container && hasLabel((java.awt.Container) child, part))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static int count(java.awt.Container c, Class<?> type)

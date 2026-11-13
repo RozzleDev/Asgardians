@@ -4,6 +4,8 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
+import net.runelite.client.config.Units;
 
 @ConfigGroup(AsgardiansConfig.GROUP)
 public interface AsgardiansConfig extends Config
@@ -177,6 +179,18 @@ public interface AsgardiansConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "codewordDetailed",
+		name = "Detailed codeword box",
+		description = "Off: a small box with just the codeword and the time. On: also the clan name, the event's name and \"Codeword:\"",
+		section = eventsSection,
+		position = 0
+	)
+	default boolean codewordDetailed()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "eventMessages",
 		name = "Event messages in chat",
 		description = "Chat messages when an event starts, 15 minutes before events you're signed up for, and when any team in your event submits, gets an item accepted or completes a tile",
@@ -198,6 +212,32 @@ public interface AsgardiansConfig extends Config
 	default boolean tileSound()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "tileSoundOnlyMine",
+		name = "Only ding for my own tiles",
+		description = "Only ding when you finish a tile yourself (you sent the item that completed it), not when a teammate does",
+		section = eventsSection,
+		position = 1
+	)
+	default boolean tileSoundOnlyMine()
+	{
+		return false;
+	}
+
+	@Range(min = 0, max = 100)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+		keyName = "tileVolume",
+		name = "Tile ding volume",
+		description = "How loud the ding is when a bingo tile is completed. 0% is silent.",
+		section = eventsSection,
+		position = 1
+	)
+	default int tileVolume()
+	{
+		return 75;
 	}
 
 	@ConfigItem(
@@ -318,6 +358,20 @@ public interface AsgardiansConfig extends Config
 	default boolean eggSound()
 	{
 		return true;
+	}
+
+	@Range(min = 0, max = 100)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+		keyName = "eggVolume",
+		name = "Egg sound volume",
+		description = "How loud the sound is when you're egged. 0% is silent.",
+		section = eggsSection,
+		position = 2
+	)
+	default int eggVolume()
+	{
+		return 75;
 	}
 
 	@ConfigItem(

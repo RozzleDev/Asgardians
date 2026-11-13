@@ -499,13 +499,18 @@ class ClanView
 		return out;
 	}
 
-	/**
-	 * Tiles completed since the previous view on the boards of events the member is in: one entry per tile, true when
-	 * it was the member's own team.
-	 */
-	List<Boolean> completedTiles(ClanView previous)
+	/** A tile completed since the last load: whether it was the member's own team, and whether the member sent the last item. */
+	@lombok.Value
+	static class Completed
 	{
-		List<Boolean> out = new ArrayList<>();
+		boolean myTeam;
+		boolean byMe;
+	}
+
+	/** Tiles completed since the previous view on the boards of events the member is in, one entry per tile. */
+	List<Completed> completedTiles(ClanView previous, String me)
+	{
+		List<Completed> out = new ArrayList<>();
 		if (previous == null)
 		{
 			return out;
@@ -536,7 +541,10 @@ class ClanView
 					ClanData.Tile old = before.get(tileKey(view.getEvent().getId(), t.getId(), tile.getId()));
 					if (old != null && tile.isComplete() && !old.isComplete())
 					{
-						out.add(OWN_BOARD.equals(t.getId()) || (t.getId() != null && t.getId().equals(view.getEvent().getTeamId())));
+						boolean myTeam = OWN_BOARD.equals(t.getId()) || (t.getId() != null && t.getId().equals(view.getEvent().getTeamId()));
+						ClanData.TileItem latest = tile.getLatest();
+						boolean byMe = myTeam && me != null && latest != null && latest.getRsn() != null && DropRecorder.sameRsn(latest.getRsn(), me);
+						out.add(new Completed(myTeam, byMe));
 					}
 				}
 			}

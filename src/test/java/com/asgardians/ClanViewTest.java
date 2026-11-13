@@ -111,9 +111,17 @@ public class ClanViewTest
 			"Event bingo: Your team submitted an item for \"Tile b\".",
 			"Event bingo: Your team's submission for \"Tile c\" was declined."), after.tileChanges(before));
 		// One tile completed, by the member's own team: a ding and fireworks.
-		assertEquals(List.of(true), after.completedTiles(before));
-		assertEquals(List.of(), after.completedTiles(after));
-		assertEquals(List.of(), after.completedTiles(null));
+		assertEquals(List.of(new ClanView.Completed(true, false)), after.completedTiles(before, "Rozzle"));
+		assertEquals(List.of(), after.completedTiles(after, "Rozzle"));
+		assertEquals(List.of(), after.completedTiles(null, "Rozzle"));
+		// The member sent the item that finished it.
+		ClanData.Board mine = board("a", "accepted", "b", "pending", "c", "declined");
+		ClanData.TileItem latest = new ClanData.TileItem();
+		latest.setRsn("Rozzle");
+		mine.getTiles().get(0).setLatest(latest);
+		ClanView byMe = view(List.of(new ClanView.EventView(bingo, null, List.of(), mine)), List.of());
+		assertEquals(List.of(new ClanView.Completed(true, true)), byMe.completedTiles(before, "Rozzle"));
+		assertEquals(List.of(new ClanView.Completed(true, false)), byMe.completedTiles(before, "Clo"));
 	}
 
 	static ClanData.Team team(String id, String name, String... members)

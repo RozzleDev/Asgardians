@@ -128,19 +128,25 @@ final class TeamBadges
 	}
 
 	/** A small coloured box with the team's tag, the size of a chat icon. */
+	/** Tall enough that the number sits inside the square with a pixel to spare. */
+	static final int BADGE_HEIGHT = 12;
+
 	static BufferedImage image(String tag, Color colour)
 	{
 		int width = tag.length() > 1 ? 15 : 11;
-		BufferedImage image = new BufferedImage(width, 11, BufferedImage.TYPE_INT_ARGB);
+		int height = BADGE_HEIGHT;
+		BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g = image.createGraphics();
 		g.setColor(colour);
-		g.fillRoundRect(0, 0, width, 11, 3, 3);
+		g.fillRoundRect(0, 0, width, height, 3, 3);
 		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
 		g.setFont(FontManager.getRunescapeSmallFont());
 		FontMetrics metrics = g.getFontMetrics();
 		int luminance = (colour.getRed() * 299 + colour.getGreen() * 587 + colour.getBlue() * 114) / 1000;
 		g.setColor(luminance > 140 ? Color.BLACK : Color.WHITE);
-		g.drawString(tag, (width - metrics.stringWidth(tag) + 1) / 2, 9);
+		// Centre the drawn letters themselves, so their tops stay inside the square.
+		java.awt.Rectangle ink = g.getFont().createGlyphVector(g.getFontRenderContext(), tag).getPixelBounds(null, 0, 0);
+		g.drawString(tag, (width - ink.width + 1) / 2 - ink.x, (height - ink.height) / 2 - ink.y);
 		g.dispose();
 		return image;
 	}

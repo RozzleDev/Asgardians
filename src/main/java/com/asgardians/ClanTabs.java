@@ -1004,13 +1004,35 @@ final class ClanTabs
 		}
 		String shown = views.contains(ui.getBingoView()) ? ui.getBingoView() : views.get(0);
 		boolean own = open != null && ownTeam(view) != null && open.getId() != null && open.getId().equals(ownTeam(view).getId());
-		if (open != null && !own && (shown.equals(BOARD) || shown.equals(LIST)) && open.getName() != null)
+		column.add(Box.createVerticalStrut(PanelParts.GAP));
+		addLeft(column, PanelParts.tabs(labels, views.indexOf(shown), i -> uiActions.bingoView(views.get(i))));
+		List<ClanData.Team> withBoards = new ArrayList<>();
+		for (ClanData.Team t : teams)
+		{
+			if (t.getId() != null && view.boardOf(t.getId()) != null)
+			{
+				withBoards.add(t);
+			}
+		}
+		if (open != null && withBoards.size() > 1 && withBoards.contains(open) && (shown.equals(BOARD) || shown.equals(LIST)))
+		{
+			// Switch boards right here, rather than going to the Team tab.
+			Map<String, String> tags = view.tags();
+			List<String> names = new ArrayList<>();
+			for (ClanData.Team t : withBoards)
+			{
+				boolean mine = ownTeam(view) != null && t.getId().equals(ownTeam(view).getId());
+				names.add(teamLabel(t, tags) + (mine ? " (yours)" : ""));
+			}
+			column.add(Box.createVerticalStrut(6));
+			addLeft(column, PanelParts.dropdowns(PanelParts.dropdown(names, withBoards.indexOf(open),
+				i -> uiActions.team(event.getId(), withBoards.get(i).getId())), null));
+		}
+		else if (open != null && !own && (shown.equals(BOARD) || shown.equals(LIST)) && open.getName() != null)
 		{
 			column.add(Box.createVerticalStrut(4));
 			addLeft(column, small("Showing " + open.getName() + "'s board. Pick a team in the Team tab.", QUIET));
 		}
-		column.add(Box.createVerticalStrut(PanelParts.GAP));
-		addLeft(column, PanelParts.tabs(labels, views.indexOf(shown), i -> uiActions.bingoView(views.get(i))));
 		switch (shown)
 		{
 			case BOARD:
@@ -1128,6 +1150,9 @@ final class ClanTabs
 			grid.add(empty);
 		}
 		column.add(Box.createVerticalStrut(6));
+		long doneCount = tiles.stream().filter(ClanData.Tile::isComplete).count();
+		addLeft(column, PanelParts.plain(doneCount + " of " + tiles.size() + " tiles done", doneCount > 0 ? GOOD : QUIET));
+		column.add(Box.createVerticalStrut(4));
 		addLeft(column, grid);
 		column.add(Box.createVerticalStrut(4));
 		JPanel info = PanelParts.spread(PanelParts.plain(lines + (lines == 1 ? " line" : " lines") + " done", lines > 0 ? PanelParts.GOLD : QUIET),
@@ -1364,6 +1389,15 @@ final class ClanTabs
 					return item.getItemId();
 				}
 			}
+			// The website left the IDs out: find the item by its name instead.
+			for (ClanData.TileNeed item : tile.getItems())
+			{
+				Integer id = item != null ? PanelParts.itemNamed(item.getName()) : null;
+				if (id != null)
+				{
+					return id;
+				}
+			}
 		}
 		return null;
 	}
@@ -1563,8 +1597,8 @@ final class ClanTabs
 		protected void paintComponent(java.awt.Graphics g)
 		{
 			boolean done = tile.isComplete();
-			Color edge = selected ? TEXT : hover ? HIGHLIGHT : inLine ? PanelParts.GOLD : null;
-			PanelParts.roundBox(g, getWidth(), getHeight(), done ? PanelParts.CARD_WARM : hover ? PanelParts.CARD_HOVER : PanelParts.CARD, edge);
+			Color edge = selected ? TEXT : hover ? HIGHLIGHT : inLine ? PanelParts.GOLD : done ? GOOD : null;
+			PanelParts.roundBox(g, getWidth(), getHeight(), done ? DONE_FILL : hover ? PanelParts.CARD_HOVER : PanelParts.CARD, edge);
 			java.awt.Graphics2D g2 = (java.awt.Graphics2D) g.create();
 			g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
 			g2.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
@@ -1577,7 +1611,7 @@ final class ClanTabs
 				int iw = (int) (picture.getWidth() * s), ih = (int) (picture.getHeight() * s);
 				if (done)
 				{
-					g2.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.5f));
+					g2.setComposite(java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, 0.45f));
 				}
 				g2.drawImage(picture, (w - iw) / 2, pad + (room - ih) / 2, iw, ih, null);
 				g2.setComposite(java.awt.AlphaComposite.SrcOver);
@@ -1593,8 +1627,8 @@ final class ClanTabs
 			}
 			if (done)
 			{
-				int d = compact ? 7 : Math.max(8, Math.min(11, w / 4));
-				int x = w - d - 2, y = 2;
+				int d = compact ? Math.max(9, w * 2 / 5) : Math.max(11, Math.min(15, w / 3));
+				int x = w - d - 1, y = 1;
 				g2.setColor(GOOD);
 				g2.fillOval(x, y, d, d);
 				g2.setColor(PanelParts.BACKGROUND);
@@ -1614,6 +1648,9 @@ final class ClanTabs
 			}
 			g2.dispose();
 		}
+
+		/** A finished tile's background. */
+		static final Color DONE_FILL = new Color(0x1F, 0x3B, 0x24);
 
 		private static String initials(String name)
 		{
@@ -1705,6 +1742,8 @@ final class ClanTabs
 			return out;
 		}
 		Map<String, String> teamNames = new HashMap<>();
+		Map<String, Color> colours = teamColours(teams);
+		Map<String, String> tags = view.tags();
 		for (ClanData.Team t : teams)
 		{
 			teamNames.put(t.getId(), t.getName());
@@ -1712,12 +1751,41 @@ final class ClanTabs
 		for (ClanData.Drop drop : drops.subList(0, Math.min(drops.size(), RECENT_DROPS)))
 		{
 			out.add(Box.createVerticalStrut(5));
-			out.add(dropCard(drop, teamNames, in));
+			out.add(dropCard(drop, teamNames, colours, tags, in));
 		}
 		return out;
 	}
 
-	private static Card dropCard(ClanData.Drop drop, Map<String, String> teamNames, Input in)
+	/** Each team's colour, the same as its clan chat badge: the website's colour, else the badge palette's. */
+	static Map<String, Color> teamColours(List<ClanData.Team> teams)
+	{
+		Map<String, Color> out = new HashMap<>();
+		int slot = 0;
+		for (ClanData.Team t : teams)
+		{
+			if (t.getId() == null)
+			{
+				continue;
+			}
+			out.put(t.getId(), TeamBadges.colour(t.getColour(), TeamBadges.fallback(slot)));
+			slot++;
+		}
+		return out;
+	}
+
+	/** A team colour light enough to read on the panel's dark cards. */
+	static Color readable(Color c)
+	{
+		Color out = c;
+		for (int i = 0; i < 4 && (out.getRed() * 299 + out.getGreen() * 587 + out.getBlue() * 114) / 1000 < 110; i++)
+		{
+			out = new Color(Math.min(255, out.getRed() + 50), Math.min(255, out.getGreen() + 50), Math.min(255, out.getBlue() + 50));
+		}
+		return out;
+	}
+
+	private static Card dropCard(ClanData.Drop drop, Map<String, String> teamNames, Map<String, Color> colours, Map<String, String> badgeTags,
+		Input in)
 	{
 		Card card = new Card(null);
 		card.setBorder(new javax.swing.border.EmptyBorder(6, 6, 6, 8));
@@ -1732,9 +1800,25 @@ final class ClanTabs
 		top.setAlignmentX(LEFT);
 		words.add(top);
 		String team = drop.getTeamId() != null ? teamNames.get(drop.getTeamId()) : null;
-		JLabel who = PanelParts.cut((drop.getRsn() != null ? drop.getRsn() : "Someone") + (team != null ? " · " + team : ""), HIGHLIGHT);
-		who.setAlignmentX(LEFT);
-		words.add(who);
+		Color colour = drop.getTeamId() != null ? colours.get(drop.getTeamId()) : null;
+		JPanel whoRow = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
+		whoRow.setOpaque(false);
+		whoRow.add(PanelParts.plain((drop.getRsn() != null ? drop.getRsn() : "Someone") + (team != null ? " · " : ""), HIGHLIGHT));
+		if (team != null)
+		{
+			// The team in its own colour, with its clan chat badge.
+			JLabel teamLabel = PanelParts.plain(team, colour != null ? readable(colour) : HIGHLIGHT);
+			String tag = badgeTags.get(drop.getTeamId());
+			if (colour != null && tag != null)
+			{
+				teamLabel.setIcon(new javax.swing.ImageIcon(TeamBadges.image(tag, colour)));
+				teamLabel.setIconTextGap(3);
+			}
+			whoRow.add(teamLabel);
+		}
+		whoRow.setAlignmentX(LEFT);
+		whoRow.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, whoRow.getPreferredSize().height));
+		words.add(whoRow);
 		JPanel tags = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0));
 		tags.setOpaque(false);
 		tags.setBorder(new javax.swing.border.EmptyBorder(2, 0, 0, 0));

@@ -637,6 +637,20 @@ final class PanelParts
 	}
 
 	/** Loads an item's picture for a component that draws it itself. */
+	/** Finds an item ID by its exact name; set by the plugin (tradeable items only). */
+	private static volatile java.util.function.Function<String, Integer> itemLookup = name -> null;
+
+	static void setItemLookup(java.util.function.Function<String, Integer> lookup)
+	{
+		itemLookup = lookup != null ? lookup : name -> null;
+	}
+
+	/** An item's ID from its name, or null when it can't be found. */
+	static Integer itemNamed(String name)
+	{
+		return name == null || name.isBlank() ? null : itemLookup.apply(name.trim());
+	}
+
 	static void itemImage(Integer itemId, java.util.function.Consumer<java.awt.image.BufferedImage> done)
 	{
 		if (itemId != null && itemId > 0)

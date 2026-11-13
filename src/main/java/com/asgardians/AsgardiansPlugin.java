@@ -494,14 +494,29 @@ public class AsgardiansPlugin extends Plugin
 					done.accept(hat);
 			}
 		});
+		// Tiles the website sent without item IDs: find the item by name (exact, tradeable items only), once each.
+		Map<String, Integer> itemIds = new java.util.concurrent.ConcurrentHashMap<>();
+		PanelParts.setItemLookup(name ->
+		{
+			int id = itemIds.computeIfAbsent(name.toLowerCase(java.util.Locale.UK), lower ->
+			{
+				for (ItemPrice price : itemManager.search(name))
+				{
+					if (price.getName() != null && price.getName().equalsIgnoreCase(name))
+					{
+						return price.getId();
+					}
+				}
+				return -1;
+			});
+			return id > 0 ? id : null;
+		});
 		PanelParts.setSkillIcons((label, name) ->
 		{
-			for (Skill skill : Skill.values())
+			Skill skill = skillNamed(name);
+			if (skill != null)
 			{
-				if (skill.getName().equalsIgnoreCase(name))
-				{
-					label.setIcon(new javax.swing.ImageIcon(skillIconManager.getSkillImage(skill, false)));
-				}
+				label.setIcon(new javax.swing.ImageIcon(skillIconManager.getSkillImage(skill, false)));
 			}
 		});
 		panel.setProfileLoader(rsn -> executor.execute(() -> fetchProfile(rsn)));
@@ -593,6 +608,7 @@ public class AsgardiansPlugin extends Plugin
 		PanelParts.setItemIcons(null);
 		PanelParts.setEventIcons(null);
 		PanelParts.setSkillIcons(null);
+		PanelParts.setItemLookup(null);
 	}
 
 	/** The address every API call should use. */
@@ -1032,21 +1048,24 @@ public class AsgardiansPlugin extends Plugin
 		{
 			chat(change);
 		}
-		celebrateTiles(now.completedTiles(previous));
+		celebrateTiles(now.completedTiles(previous, ownRsn));
 	}
 
-	/** A ding and fireworks when the member's own team completed a tile; other teams' tiles stay quiet. Client thread. */
-	private void celebrateTiles(List<Boolean> completed)
+	/**
+	 * A ding and fireworks when the member's own team completed a tile; other teams' tiles stay quiet. With "Only ding
+	 * for my own tiles" on, the ding waits for a tile the member finished themself. Client thread.
+	 */
+	private void celebrateTiles(List<ClanView.Completed> completed)
 	{
-		if (!completed.contains(true))
+		boolean team = completed.stream().anyMatch(ClanView.Completed::isMyTeam);
+		boolean mine = completed.stream().anyMatch(ClanView.Completed::isByMe);
+		if (!team)
 		{
 			return;
 		}
-		if (config.tileSound())
+		if (config.tileSound() && (mine || !config.tileSoundOnlyMine()))
 		{
-			// Their own sound effect volume, unless it's muted: they asked for the sound in the plugin settings.
-			int volume = client.getPreferences().getSoundEffectVolume();
-			client.playSoundEffect(TILE_SOUND, volume > 0 ? volume : net.runelite.api.SoundEffectVolume.MEDIUM_HIGH);
+			playSound(TILE_SOUND, config.tileVolume());
 		}
 		Player local = client.getLocalPlayer();
 		if (config.tileFireworks() && local != null)
@@ -1054,6 +1073,23 @@ public class AsgardiansPlugin extends Plugin
 			// The level-up fireworks, on the member's own character and only on their screen.
 			local.createSpotAnim(TILE_FIREWORKS_KEY, net.runelite.api.gameval.SpotanimID.LEVELUP_ANIM, 0, 0);
 		}
+	}
+
+	/** Plays a game sound at the member's chosen volume (0-100%); 0% plays nothing. Client thread. */
+	private void playSound(int sound, int percent)
+	{
+		int volume = soundVolume(percent);
+		if (volume > 0)
+		{
+			client.playSoundEffect(sound, volume);
+		}
+	}
+
+	/** A 0-100% setting as the game's sound effect volume, 0-127. */
+	static int soundVolume(int percent)
+	{
+		int p = Math.max(0, Math.min(100, percent));
+		return Math.round(p * net.runelite.api.SoundEffectVolume.HIGH / 100f);
 	}
 
 	/** Our own slot for the fireworks, so they don't replace anything the game is showing. */
@@ -1579,9 +1615,7 @@ public class AsgardiansPlugin extends Plugin
 		}
 		if (hit && config.eggSound())
 		{
-			// Their own sound effect volume, unless it's muted: they asked for the sound in the plugin settings.
-			int volume = client.getPreferences().getSoundEffectVolume();
-			client.playSoundEffect(EGG_SOUND, volume > 0 ? volume : net.runelite.api.SoundEffectVolume.MEDIUM_HIGH);
+			playSound(EGG_SOUND, config.eggVolume());
 		}
 		if (config.eggMessages())
 		{
@@ -2142,9 +2176,34 @@ public class AsgardiansPlugin extends Plugin
 	static Skill skillIn(String eventName)
 	{
 		String name = eventName != null ? eventName.toLowerCase(java.util.Locale.UK) : "";
+		// The longest name wins, so "Runecrafting" is Runecraft rather than the Crafting inside it.
+		Skill best = null;
 		for (Skill skill : Skill.values())
 		{
-			if (!"Overall".equals(skill.getName()) && name.contains(skill.getName().toLowerCase(java.util.Locale.UK)))
+			String n = skill.getName().toLowerCase(java.util.Locale.UK);
+			if (!"Overall".equals(skill.getName()) && name.contains(n) && (best == null || n.length() > best.getName().length()))
+			{
+				best = skill;
+			}
+		}
+		return best;
+	}
+
+	/** A skill by its name: "Runecraft", or "Runecrafting" as the website and Wise Old Man write it. Null when unknown. */
+	static Skill skillNamed(String name)
+	{
+		if (name == null)
+		{
+			return null;
+		}
+		String n = name.trim();
+		if (n.equalsIgnoreCase("Runecrafting"))
+		{
+			return Skill.RUNECRAFT;
+		}
+		for (Skill skill : Skill.values())
+		{
+			if (skill.getName().equalsIgnoreCase(n))
 			{
 				return skill;
 			}

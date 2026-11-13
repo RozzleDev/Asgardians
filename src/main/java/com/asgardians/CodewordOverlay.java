@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.function.Supplier;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.ui.overlay.components.ComponentConstants;
 import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 
@@ -39,7 +40,13 @@ class CodewordOverlay extends OverlayPanel
 		{
 			return null;
 		}
+		// The detailed box keeps RuneLite's usual overlay width.
+		panelComponent.setPreferredSize(new Dimension(ComponentConstants.STANDARD_WIDTH, 0));
 		ClanView current = view.get();
+		if (!config.codewordDetailed())
+		{
+			return simple(graphics, current);
+		}
 		boolean any = false;
 		for (ClanView.EventView live : current.live())
 		{
@@ -63,5 +70,41 @@ class CodewordOverlay extends OverlayPanel
 		}
 		panelComponent.getChildren().add(LineComponent.builder().left(UTC.format(Instant.now())).build());
 		return super.render(graphics);
+	}
+
+	/** Just the codeword (one line per live event) and the time, in a box only as wide as they need. */
+	private Dimension simple(Graphics2D graphics, ClanView current)
+	{
+		java.util.List<String> words = codewords(current);
+		if (words.isEmpty())
+		{
+			return null;
+		}
+		String time = UTC.format(Instant.now());
+		java.awt.FontMetrics fm = graphics.getFontMetrics();
+		int width = fm.stringWidth(time);
+		for (String w : words)
+		{
+			panelComponent.getChildren().add(LineComponent.builder().left(w).leftColor(PanelParts.HIGHLIGHT).build());
+			width = Math.max(width, fm.stringWidth(w));
+		}
+		panelComponent.getChildren().add(LineComponent.builder().left(time).build());
+		panelComponent.setPreferredSize(new Dimension(width + 10, 0));
+		return super.render(graphics);
+	}
+
+	/** The codewords of live events the member is in, in order. */
+	static java.util.List<String> codewords(ClanView current)
+	{
+		java.util.List<String> out = new java.util.ArrayList<>();
+		for (ClanView.EventView live : current.live())
+		{
+			ClanData.Event event = live.getEvent();
+			if (event.getCodeword() != null && event.isIn())
+			{
+				out.add(event.getCodeword());
+			}
+		}
+		return out;
 	}
 }

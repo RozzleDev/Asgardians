@@ -147,6 +147,49 @@ public class MapStaffSearchTest
 		assertFalse(ChatParsers.isNerdLogWarning("You've been playing for a while, consider taking a break from your screen."));
 	}
 
+	@Test
+	public void runecraftingIsNotCrafting()
+	{
+		assertEquals(net.runelite.api.Skill.RUNECRAFT, AsgardiansPlugin.skillIn("Runecrafting - Sotw"));
+		assertEquals(net.runelite.api.Skill.CRAFTING, AsgardiansPlugin.skillIn("Crafting - Sotw"));
+		assertEquals(net.runelite.api.Skill.THIEVING, AsgardiansPlugin.skillIn("Thieving - Sotw"));
+		assertNull(AsgardiansPlugin.skillIn("Vardorvis - Botw"));
+		assertEquals(net.runelite.api.Skill.RUNECRAFT, AsgardiansPlugin.skillNamed("Runecrafting"));
+		assertEquals(net.runelite.api.Skill.RUNECRAFT, AsgardiansPlugin.skillNamed("runecraft"));
+		assertNull(AsgardiansPlugin.skillNamed("Sailing?"));
+	}
+
+	@Test
+	public void volumesGoFromPercentToTheGamesScale()
+	{
+		assertEquals(0, AsgardiansPlugin.soundVolume(0));
+		assertEquals(127, AsgardiansPlugin.soundVolume(100));
+		assertEquals(95, AsgardiansPlugin.soundVolume(75));
+		assertEquals(127, AsgardiansPlugin.soundVolume(250));
+		assertEquals(0, AsgardiansPlugin.soundVolume(-5));
+		java.util.Map<String, String> saved = new java.util.HashMap<>();
+		AsgardiansPanel.Settings settings = new AsgardiansPanel.Settings()
+		{
+			@Override
+			public String get(String key)
+			{
+				return saved.get(key);
+			}
+
+			@Override
+			public void set(String key, String value)
+			{
+				saved.put(key, value);
+			}
+		};
+		SettingsTabs.Setting egg = SettingsTabs.Setting.volume("eggVolume", "Egg sound volume", 75);
+		assertEquals(75, SettingsTabs.percent(settings, egg));
+		saved.put("eggVolume", "30");
+		assertEquals(30, SettingsTabs.percent(settings, egg));
+		saved.put("eggVolume", "loud");
+		assertEquals(75, SettingsTabs.percent(settings, egg));
+	}
+
 	private static void labels(Container c, List<String> texts, List<JLabel> badged)
 	{
 		for (Component child : c.getComponents())
