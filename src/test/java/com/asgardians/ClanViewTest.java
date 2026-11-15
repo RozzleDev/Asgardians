@@ -181,6 +181,7 @@ public class ClanViewTest
 	public void tileCountsComeFromItsItemsWhenItHasNoneOfItsOwn()
 	{
 		assertEquals("1/3", itemTile("all", 1, 3).progress());
+		// "all" counts every item up to its need: 1 of 1 and 1 of 3.
 		assertEquals("2/4", itemTile("all", 1, 1, 1, 3).progress());
 		assertNull(itemTile("any", 0, 1, 0, 1).progress());
 		assertTrue(itemTile("any", 0, 1, 1, 1).isComplete());
@@ -188,6 +189,81 @@ public class ClanViewTest
 		assertEquals(false, itemTile("all", 1, 1, 0, 1).isComplete());
 		assertEquals(List.of("Bingo: Team 2 had an item accepted for \"Tile\" (2/3)."),
 			change(itemTile("all", 1, 3), itemTile("all", 2, 3)));
+	}
+
+	private static String counted(ClanData.Tile t)
+	{
+		int[] p = t.tileProgress();
+		return p[0] + "/" + p[1];
+	}
+
+	private static ClanData.Tile pets(int done)
+	{
+		ClanData.Tile t = itemTile("count", 0, 1, 0, 1, 0, 1, 0, 1);
+		t.setName("2x Raid pets");
+		t.setNeededItems(2);
+		for (int i = 0; i < done; i++)
+		{
+			t.getItems().get(i).setHave(1);
+		}
+		return t;
+	}
+
+	@Test
+	public void tileProgressFollowsHowTheWebsiteCompletesTiles()
+	{
+		// "count": any 2 different pets of the 4 finish the tile.
+		assertEquals("1/2", counted(pets(1)));
+		assertEquals("2/2", counted(pets(3)));
+		assertTrue(pets(2).isComplete());
+		assertEquals(false, pets(1).isComplete());
+		// "count": the same pet twice is still one different item.
+		ClanData.Tile twice = pets(0);
+		twice.getItems().get(0).setHave(2);
+		assertEquals("1/2", counted(twice));
+		assertTrue(twice.acceptedItems() == 2);
+		// "total": duplicates count, so 2 Orions finish it.
+		twice.setMode("total");
+		assertEquals("2/2", counted(twice));
+		assertTrue(twice.isComplete());
+		// neededItems missing means 1.
+		ClanData.Tile one = pets(0);
+		one.setNeededItems(null);
+		assertEquals("0/1", counted(one));
+		// "any": one of three.
+		assertEquals("1/1", counted(itemTile("any", 1, 1, 0, 1, 0, 1)));
+		// "all": a whip, and 2 of 3 shards.
+		assertEquals("3/4", counted(itemTile("all", 1, 1, 2, 3)));
+		// No mode is "all"; extra copies of an item don't count past its need.
+		assertEquals("3/4", counted(itemTile(null, 5, 1, 2, 3)));
+		// One item: its own count, e.g. 1 of 3 horns.
+		assertEquals("1/3", counted(itemTile("all", 1, 3)));
+		// No items: the tile's own counts, never more than it needs.
+		ClanData.Tile task = new ClanData.Tile();
+		task.setHave(4);
+		task.setNeed(10);
+		assertEquals("4/10", counted(task));
+		task.setHave(12);
+		assertEquals("10/10", counted(task));
+	}
+
+	@Test
+	public void totalTilesStillWantDuplicatesUntilDone()
+	{
+		ClanData.Tile t = pets(1);
+		t.setMode("total");
+		assertTrue(t.stillNeeds(t.getItems().get(0)));
+		t.setMode("count");
+		assertEquals(false, t.stillNeeds(t.getItems().get(0)));
+	}
+
+	@Test
+	public void acceptedMessageCountsTowardsWhatFinishesTheTile()
+	{
+		ClanData.Tile before = pets(0);
+		ClanData.Tile after = pets(1);
+		after.getItems().get(0).setItemId(1);
+		assertEquals(List.of("Bingo: Team 2 had an item accepted for \"2x Raid pets\" (1/2)."), change(before, after));
 	}
 
 	private static ClanData.Tile horns(String state, int have)

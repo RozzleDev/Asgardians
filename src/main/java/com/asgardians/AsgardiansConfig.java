@@ -31,8 +31,8 @@ public interface AsgardiansConfig extends Config
 	String eventsSection = "events";
 
 	@ConfigSection(
-		name = "Groups",
-		description = "The group finder in the Groups tab. On-screen alerts for new groups are off until you turn on \"New groups on screen\".",
+		name = "LFG and party",
+		description = "The group finder in the LFG tab. On-screen alerts for new groups are off until you turn on \"New groups on screen\".",
 		position = 3
 	)
 	String groupsSection = "groups";
@@ -181,7 +181,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "codewordDetailed",
 		name = "Detailed codeword box",
-		description = "Off: a small box with just the codeword and the time. On: also the clan name, the event's name and \"Codeword:\"",
+		description = "Off: a small box with just the codeword and the time. On: also the event's name, every team's score (yours highlighted) and the time left",
 		section = eventsSection,
 		position = 0
 	)
@@ -265,6 +265,18 @@ public interface AsgardiansConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "pbRankMessages",
+		name = "Clan rank for new PBs",
+		description = "After a new personal best, say in chat where it puts you among the clan's best times, e.g. \"#3 in the clan\"",
+		section = eventsSection,
+		position = 3
+	)
+	default boolean pbRankMessages()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "newsMessages",
 		name = "Announcements in chat",
 		description = "A chat message when clan staff post a new announcement, and at login for any you haven't read",
@@ -303,7 +315,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "groupAlerts",
 		name = "New groups in chat",
-		description = "A chat message when a clan member starts a group in the Groups tab, so you can join. Pick which activities with the bells under \"Group alerts\" in the Groups tab. Turning this off mutes them all, except any clan staff send to everyone. Messages about your own group always show.",
+		description = "A chat message when a clan member starts a group in the LFG tab, so you can join. Pick which activities with the bells under \"Group alerts\" in the LFG tab. Turning this off mutes them all, except any clan staff send to everyone. Messages about your own group always show.",
 		section = groupsSection,
 		position = 0
 	)
@@ -315,7 +327,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "groupOverlay",
 		name = "New groups on screen",
-		description = "Off by default. Turn this on to also see new groups on screen for a few seconds. Pick which activities with the screen icons under \"Group alerts\" in the Groups tab (all are on until you change them).",
+		description = "Off by default. Turn this on to also see new groups on screen for a few seconds. Pick which activities with the screen icons under \"Group alerts\" in the LFG tab (all are on until you change them).",
 		section = groupsSection,
 		position = 1
 	)
@@ -334,6 +346,32 @@ public interface AsgardiansConfig extends Config
 	default boolean groupParty()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "readyChecks",
+		name = "Party ready checks",
+		description = "Show ready checks from your RuneLite party on screen (right-click the box to answer), ring a bell when one starts and say the result in chat",
+		section = groupsSection,
+		position = 3
+	)
+	default boolean readyChecks()
+	{
+		return true;
+	}
+
+	@Range(min = 0, max = 100)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+		keyName = "readyCheckVolume",
+		name = "Ready check bell volume",
+		description = "How loud the bell is when someone in your party starts a ready check. 0% is silent.",
+		section = groupsSection,
+		position = 4
+	)
+	default int readyCheckVolume()
+	{
+		return 75;
 	}
 
 	@ConfigItem(

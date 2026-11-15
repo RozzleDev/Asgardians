@@ -31,7 +31,7 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import lombok.Value;
 
-/** Builds the Groups tab: the member's own group, a form to start one, and the open groups. Swing thread only. */
+/** Builds the LFG tab: the member's own group, a form to start one, and the open groups. Swing thread only. */
 final class GroupTabs
 {
 	private GroupTabs()
@@ -179,14 +179,14 @@ final class GroupTabs
 		}
 		if (in.getNotConnected() != null)
 		{
-			Card card = new Card("Groups");
+			Card card = new Card("LFG");
 			card.add(small(in.getNotConnected(), QUIET));
 			addCard(column, card);
 			return;
 		}
 		if (in.isUnsupported())
 		{
-			Card card = new Card("Groups");
+			Card card = new Card("LFG");
 			card.add(small("Find or start a group for raids, bosses and other group content. The clan website doesn't have groups yet, so check back soon.", QUIET));
 			addCard(column, card);
 			return;
@@ -194,7 +194,7 @@ final class GroupTabs
 		ClanData.GroupList list = in.getGroups();
 		if (list == null)
 		{
-			Card card = new Card("Groups");
+			Card card = new Card("LFG");
 			card.add(small("Loading…", QUIET));
 			addCard(column, card);
 			return;

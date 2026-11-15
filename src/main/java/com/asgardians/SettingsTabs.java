@@ -72,14 +72,17 @@ final class SettingsTabs
 			Setting.volume("tileVolume", "Tile ding volume", 75),
 			new Setting("tileFireworks", "Fireworks for my team's tiles", true),
 			new Setting("motdAtLogin", "Message of the day at login", true),
+			new Setting("pbRankMessages", "Clan rank for new PBs", true),
 			new Setting("newsMessages", "Announcements in chat", true),
 			new Setting("teamBadges", "Team badges in clan chat", true),
 			new Setting("showCodeword", "Show event codeword", true),
 			new Setting("codewordDetailed", "Detailed codeword box", false)), null),
-		new Group("Groups", List.of(
+		new Group("LFG and party", List.of(
 			new Setting("groupAlerts", "New groups in chat", true),
 			new Setting("groupOverlay", "New groups on screen", false),
-			new Setting("groupParty", "Join a group's RuneLite party", true)),
+			new Setting("groupParty", "Join a group's RuneLite party", true),
+			new Setting("readyChecks", "Party ready checks", true),
+			Setting.volume("readyCheckVolume", "Ready check bell volume", 75)),
 			"Want new groups on screen too? Turn on \"New groups on screen\". It's off to start with."),
 		new Group("World map", List.of(
 			new Setting("showClanMap", "Show clanmates on the map", true),

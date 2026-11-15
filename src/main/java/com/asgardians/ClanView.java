@@ -584,7 +584,8 @@ class ClanView
 		{
 			out.add(event + ": " + team + " completed " + tile + ".");
 		}
-		else if (!now.isComplete() && now.accepted() != null && old.accepted() != null && now.accepted() > old.accepted())
+		else if (!now.isComplete() && now.acceptedItems() != null && old.acceptedItems() != null
+			&& now.acceptedItems() > old.acceptedItems())
 		{
 			out.add(event + ": " + team + " had an item accepted for " + tile
 				+ (now.progress() != null ? " (" + now.progress() + ")" : "") + ".");
@@ -702,7 +703,7 @@ class ClanView
 		{
 			for (ClanData.TileNeed need : tile.getItems())
 			{
-				boolean stillNeeded = need.getHave() == null || need.getNeed() == null || need.getHave() < need.getNeed();
+				boolean stillNeeded = tile.stillNeeds(need);
 				if (need.getItemId() != null && need.getItemId() == drop.getId() && stillNeeded)
 				{
 					return drop.getName() != null ? drop.getName() : need.getName();

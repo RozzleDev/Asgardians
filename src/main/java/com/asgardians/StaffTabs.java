@@ -56,6 +56,66 @@ final class StaffTabs
 		}
 	}
 
+	/** What the Rank ups page shows. */
+	@Value
+	static class RankUps
+	{
+		/** Null while loading or when they couldn't be loaded. */
+		List<ClanData.RankUp> members;
+		boolean loading;
+		String error;
+		Instant now;
+	}
+
+	/** Members due a rank up, longest waiting first as the website sends them. Click one for their profile. */
+	static void drawRankUps(JPanel column, RankUps in, java.util.function.Consumer<String> openProfile)
+	{
+		column.removeAll();
+		if (in.getError() != null || in.getMembers() == null || in.getMembers().isEmpty())
+		{
+			Card card = new Card(null);
+			card.add(small(in.getError() != null ? in.getError() : in.getMembers() == null
+				? (in.isLoading() ? "Loading..." : "Rank ups couldn't be loaded.") : "Nobody is due a rank up right now.",
+				in.getError() != null ? BAD : QUIET));
+			PanelParts.addCard(column, card);
+			return;
+		}
+		for (ClanData.RankUp r : in.getMembers())
+		{
+			if (r == null || r.getRsn() == null)
+			{
+				continue;
+			}
+			Card card = new Card(null);
+			card.setBorder(new javax.swing.border.EmptyBorder(6, 8, 6, 8));
+			JPanel top = new JPanel(new BorderLayout(6, 0));
+			top.setOpaque(false);
+			top.add(PanelParts.bold(r.getRsn(), TEXT), BorderLayout.CENTER);
+			Instant since = ClanData.parse(r.getSince());
+			if (since != null && in.getNow() != null)
+			{
+				top.add(PanelParts.plain(ClanView.ago(since, in.getNow()).replace(" ago", ""), QUIET), BorderLayout.EAST);
+			}
+			card.addWide(top);
+			String from = r.getRank() != null ? ProfileText.rank(r.getRank()) : "?";
+			String to = r.getNextRank() != null ? ProfileText.rank(r.getNextRank()) : "next rank";
+			card.addWide(PanelParts.plain(from + "  ->  " + to, PanelParts.HIGHLIGHT));
+			if (r.getReason() != null)
+			{
+				card.addWide(PanelParts.plain(r.getReason(), QUIET));
+			}
+			card.onClick(() -> openProfile.accept(r.getRsn()), "See " + r.getRsn() + "'s profile");
+			column.add(Box.createVerticalStrut(4));
+			card.setAlignmentX(JPanel.LEFT_ALIGNMENT);
+			column.add(card);
+		}
+		column.add(Box.createVerticalStrut(PanelParts.GAP));
+		JPanel note = PanelParts.column();
+		note.add(small("Promote them in the clan settings in game; they leave this list once the website sees the new rank.", QUIET));
+		note.setAlignmentX(JPanel.LEFT_ALIGNMENT);
+		column.add(note);
+	}
+
 	/** The longest message of the day. */
 	static final int MOTD_LENGTH = 300;
 

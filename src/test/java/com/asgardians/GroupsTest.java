@@ -47,7 +47,7 @@ public class GroupsTest
 	public void startingAndJoining()
 	{
 		ClanData.GroupList none = groups(null);
-		assertEquals(List.of("Your Theatre of Blood (Hard mode) group is open on W416. Others can join from the Groups tab."),
+		assertEquals(List.of("Your Theatre of Blood (Hard mode) group is open on W416. Others can join from the LFG tab."),
 			Groups.changes(none, groups("g1", group("g1", "Rozzle", 4, "416", "Rozzle")), "Rozzle", null));
 		assertEquals(List.of("You joined Clo's Theatre of Blood (Hard mode) group (2/4) on W416."),
 			Groups.changes(none, groups("g1", group("g1", "Clo", 4, "416", "Clo", "Rozzle")), "Rozzle", null));
@@ -137,14 +137,14 @@ public class GroupsTest
 	{
 		String[] me = {"Rozzle"};
 		ClanData.GroupList before = groups("g1", lobby("g1", "Rozzle", 4, me));
-		assertEquals(List.of("Clo (120 kc) asked to join your group. Accept or decline in the Groups tab."),
+		assertEquals(List.of("Clo (120 kc) asked to join your group. Accept or decline in the LFG tab."),
 			Groups.changes(before, groups("g1", lobby("g1", "Rozzle", 4, me, "Clo")), "Rozzle", null));
 		// Other members of the group aren't told; the host picks.
 		ClanData.GroupList member = groups("g1", lobby("g1", "Thor", 4, new String[]{"Thor", "Rozzle"}));
 		assertEquals(List.of(), Groups.changes(member, groups("g1", lobby("g1", "Thor", 4, new String[]{"Thor", "Rozzle"}, "Clo")), "Rozzle", null));
-		assertEquals(List.of("Your Theatre of Blood (Hard mode) group is open on W416. Others can ask to join from the Groups tab, and you pick who joins."),
+		assertEquals(List.of("Your Theatre of Blood (Hard mode) group is open on W416. Others can ask to join from the LFG tab, and you pick who joins."),
 			Groups.changes(groups(null), before, "Rozzle", null));
-		assertEquals(List.of("Clo started a group: Theatre of Blood (Hard mode), 1/4, W416. Ask to join from the Groups tab."),
+		assertEquals(List.of("Clo started a group: Theatre of Blood (Hard mode), 1/4, W416. Ask to join from the LFG tab."),
 			Groups.started(groups(null), groups(null, lobby("g1", "Clo", 4, new String[]{"Clo"})), "Rozzle"));
 	}
 
@@ -208,7 +208,7 @@ public class GroupsTest
 		ClanData.GroupList before = groups(null, group("g1", "Clo", 4, "416", "Clo"));
 		ClanData.GroupList now = groups(null, group("g1", "Clo", 4, "416", "Clo"), group("g2", "Str4tty", 5, "302", "Str4tty"),
 			group("g3", "Rozzle", 4, "416", "Rozzle"), group("g4", "Dolorosa", 1, "416", "Dolorosa"));
-		assertEquals(List.of("Str4tty started a group: Theatre of Blood (Hard mode), 1/5, W302. Join from the Groups tab."),
+		assertEquals(List.of("Str4tty started a group: Theatre of Blood (Hard mode), 1/5, W302. Join from the LFG tab."),
 			Groups.started(before, now, "Rozzle"));
 	}
 

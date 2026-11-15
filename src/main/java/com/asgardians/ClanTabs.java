@@ -1332,7 +1332,9 @@ final class ClanTabs
 		if (full && tile.getItems() != null && tile.getItems().size() > 1)
 		{
 			card.gap();
-			card.add(small(("any".equalsIgnoreCase(tile.getMode()) ? "Any one of: " : "All of: ") + itemNames(tile), QUIET));
+			card.add(small(("any".equalsIgnoreCase(tile.getMode()) ? "Any one of: " : "count".equalsIgnoreCase(tile.getMode())
+				? "Any " + tile.needed() + " different of: " : tile.isTotal() ? "Any " + tile.needed() + " of (repeats count): "
+				: "All of: ") + itemNames(tile), QUIET));
 		}
 		return card;
 	}
@@ -1361,6 +1363,10 @@ final class ClanTabs
 		{
 			return "Drop";
 		}
+		if ("count".equalsIgnoreCase(tile.getMode()) || tile.isTotal())
+		{
+			return tile.needed() + " of " + items.size();
+		}
 		return "any".equalsIgnoreCase(tile.getMode()) ? "Any of " + items.size() : "Set of " + items.size();
 	}
 
@@ -1371,8 +1377,10 @@ final class ClanTabs
 		{
 			if (item != null && item.getName() != null)
 			{
-				names.add(item.getName() + (item.getNeed() != null && item.getNeed() > 1
-					? " (" + (item.getHave() != null ? item.getHave() : 0) + "/" + item.getNeed() + ")" : ""));
+				// "total" tiles show each item's raw count (duplicates count), others have / need.
+				int have = item.getHave() != null ? item.getHave() : 0;
+				names.add(item.getName() + (tile.isTotal() ? (have > 0 ? " x" + have : "")
+					: item.getNeed() != null && item.getNeed() > 1 ? " (" + have + "/" + item.getNeed() + ")" : ""));
 			}
 		}
 		return String.join(", ", names);

@@ -106,9 +106,9 @@ public class PanelPreview
 		frame.add(panel);
 		panel.setPreferredSize(new Dimension(242, 900));
 		frame.pack();
-		for (String page : new String[]{AsgardiansPanel.HOME, AsgardiansPanel.EVENTS, AsgardiansPanel.BINGO, AsgardiansPanel.GROUPS,
+		for (String page : new String[]{AsgardiansPanel.HOME, AsgardiansPanel.EVENTS, AsgardiansPanel.BINGO, AsgardiansPanel.GROUPS, AsgardiansPanel.PARTY,
 			AsgardiansPanel.MEMBERS, AsgardiansPanel.DROPS, AsgardiansPanel.LEADERBOARD, AsgardiansPanel.PROFILE, AsgardiansPanel.MEMBER,
-			AsgardiansPanel.NEWS, AsgardiansPanel.PBS, AsgardiansPanel.SETTINGS, AsgardiansPanel.STAFF})
+			AsgardiansPanel.NEWS, AsgardiansPanel.PBS, AsgardiansPanel.SETTINGS, AsgardiansPanel.STAFF, AsgardiansPanel.STAFF_RANKS, AsgardiansPanel.STAFF_MOTD})
 		{
 			if (page.equals(AsgardiansPanel.LEADERBOARD))
 			{
@@ -273,6 +273,24 @@ public class PanelPreview
 			false, NOW, ZONE, null));
 		panel.updateMembers(members());
 		panel.updateMotd(GSON.fromJson("{\"text\":\"Bingo #4 sign-ups close Friday 8pm. Mass ToB tonight at 9 on W416!\",\"author\":\"pricey\"}", ClanData.Motd.class));
+		panel.setPartyActions(new PartyTabs.Actions()
+		{
+			public void startParty() { }
+			public void joinParty(String passphrase) { }
+			public void leaveParty() { }
+			public void copyPassphrase() { }
+			public void readyCheck() { }
+			public void answer(boolean ready) { }
+		});
+		panel.updateParty(new PartyTabs.Input(true, "ASG-417", null, java.util.List.of(
+			new PartyTabs.Member("Rozzle", true, true, true, 99, 99, 77, 99),
+			new PartyTabs.Member("Clo", false, true, true, 84, 99, 52, 99),
+			new PartyTabs.Member("Str4tty", false, true, true, 28, 99, 10, 99)), null));
+		panel.setRankUpsLoader(() -> panel.updateRankUps(new StaffTabs.RankUps(GSON.fromJson("{\"members\":["
+			+ "{\"rsn\":\"Freya\",\"rank\":\"opal\",\"nextRank\":\"onyx\",\"reason\":\"90 days in the clan\",\"since\":\"2026-11-05T12:00:00Z\"},"
+			+ "{\"rsn\":\"Odin Jr\",\"rank\":\"sapphire\",\"nextRank\":\"emerald\",\"reason\":\"250M clan credit\",\"since\":\"2026-11-07T18:00:00Z\"},"
+			+ "{\"rsn\":\"Heimdall\",\"rank\":\"emerald\",\"nextRank\":\"ruby\",\"reason\":\"180 days in the clan\",\"since\":\"2026-11-08T09:00:00Z\"}]}",
+			ClanData.RankUpList.class).getMembers(), false, null, NOW)));
 		panel.setStaffActions(rsn -> panel.updateStaffNotes(rsn, new StaffTabs.Input(rsn == null
 			? GSON.fromJson("{\"notes\":[{\"id\":\"1\",\"text\":\"Holding 100m for Saturday's drop party.\",\"author\":\"pricey\",\"at\":\"2026-11-08T10:00:00Z\"},"
 				+ "{\"id\":\"2\",\"text\":\"Bingo #4 prize pot: 250m, Clo has it.\",\"author\":\"Clo\",\"at\":\"2026-11-06T19:30:00Z\"}]}", ClanData.StaffNoteList.class).getNotes()

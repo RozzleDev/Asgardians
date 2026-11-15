@@ -21,7 +21,7 @@ import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 
 /**
- * A window showing the Groups tab's "Group alerts" card and the new-group overlay with sample data, so design changes
+ * A window showing the LFG tab's "Group alerts" card and the new-group overlay with sample data, so design changes
  * can be seen without starting RuneLite. Run it with C:\claude\Preview.bat, which rebuilds first. Clicking the bells and
  * screen icons works as in the plugin.
  */

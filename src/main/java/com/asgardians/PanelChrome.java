@@ -37,7 +37,7 @@ final class PanelChrome
 	/** The orange line icons on the Home tiles. */
 	enum Icon
 	{
-		EVENTS, BINGO, GROUPS, MEMBERS, DROPS, LEADERBOARD, PROFILE, NEWS, PBS
+		EVENTS, BINGO, GROUPS, PARTY, MEMBERS, DROPS, LEADERBOARD, PROFILE, NEWS, PBS, STAFF
 	}
 
 	/**
@@ -606,6 +606,11 @@ final class PanelChrome
 				{
 					g.fillRect(cx - 9 + (i % 3) * 7, cy - 9 + (i / 3) * 7, 5, 5);
 				}
+				break;
+			case PARTY:
+				// A party hat.
+				g.fillPolygon(new int[]{cx - 10, cx - 6, cx - 2, cx + 2, cx + 6, cx + 10, cx + 8, cx - 8},
+					new int[]{cy + 2, cy - 7, cy + 1, cy - 9, cy + 1, cy - 7, cy + 8, cy + 8}, 8);
 				break;
 			case GROUPS:
 				g.drawOval(cx - 9, cy - 9, 7, 7);

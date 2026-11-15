@@ -121,6 +121,24 @@ public class AsgCommandsTest
 	}
 
 	@Test
+	public void newPbsAreRankedAgainstTheClan()
+	{
+		ClanData.StatsFeed stats = GSON.fromJson("{\"records\":["
+			+ "{\"boss\":\"Theatre of Blood\",\"teamSize\":\"4\",\"entries\":[{\"rsn\":\"Clo\",\"seconds\":892.4},{\"rsn\":\"Thor\",\"seconds\":900},{\"rsn\":\"Rozzle\",\"seconds\":960}]},"
+			+ "{\"boss\":\"Vorkath\",\"teamSize\":\"1\",\"entries\":[{\"rsn\":\"pricey\",\"seconds\":70.2}]}]}", ClanData.StatsFeed.class);
+		// RuneLite's names are lower case; the member's own old time doesn't count against them.
+		assertEquals("Theatre of Blood (4-man) 15:00.60 is #3 in the clan. Record: Clo 14:52.40.",
+			AsgCommands.pbRank(stats, "theatre of blood", "4", 900.6, "Rozzle"));
+		assertEquals("Theatre of Blood (4-man) 14:40 is the fastest in the clan! Previous record: Clo 14:52.40.",
+			AsgCommands.pbRank(stats, "theatre of blood", "4", 880, "Rozzle"));
+		assertEquals("Vorkath (solo) 1:05 is the fastest in the clan! Previous record: pricey 1:10.20.",
+			AsgCommands.pbRank(stats, "vorkath", null, 65, "Rozzle"));
+		assertNull(AsgCommands.pbRank(stats, "zulrah", null, 60, "Rozzle"));
+		assertNull(AsgCommands.pbRank(stats, "theatre of blood", "5", 800, "Rozzle"));
+		assertNull(AsgCommands.pbRank(null, "vorkath", null, 65, "Rozzle"));
+	}
+
+	@Test
 	public void answersAboutWhoeverTypedIt()
 	{
 		ClanData.Me p = GSON.fromJson("{\"rsn\":\"Rozzle\",\"rank\":\"deputy_owner\",\"daysInClan\":456,\"splitCredit\":1240000,"

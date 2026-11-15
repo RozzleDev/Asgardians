@@ -48,6 +48,7 @@ class AsgardiansPanel extends PluginPanel
 	static final String EVENTS = "events";
 	static final String BINGO = "bingo";
 	static final String GROUPS = "groups";
+	static final String PARTY = "party";
 	static final String MEMBERS = "members";
 	static final String DROPS = "drops";
 	static final String LEADERBOARD = "leaderboard";
@@ -58,6 +59,10 @@ class AsgardiansPanel extends PluginPanel
 	static final String PBS = "pbs";
 	static final String SETTINGS = "settings";
 	static final String STAFF = "staff";
+	static final String STAFF_MOTD = "staffMotd";
+	static final String STAFF_NEWS = "staffNews";
+	static final String STAFF_NOTES = "staffNotes";
+	static final String STAFF_RANKS = "staffRanks";
 	/** One event's details. */
 	static final String EVENT = "event";
 
@@ -106,6 +111,11 @@ class AsgardiansPanel extends PluginPanel
 	private final JPanel leadersTab = PanelParts.column();
 	private final JPanel newsTab = PanelParts.column();
 	private final JPanel groupsTab = PanelParts.column();
+	/** The Party page: the member's RuneLite party and its ready check. */
+	private final JPanel partyTab = PanelParts.column();
+	private volatile boolean partyShown;
+	private PartyTabs.Input lastParty;
+	private PartyTabs.Actions partyActions;
 	private final JPanel membersTab = PanelParts.column();
 	/** The Members page below its search box, which stays put so typing isn't interrupted. */
 	private final JPanel membersList = PanelParts.column();
@@ -117,11 +127,21 @@ class AsgardiansPanel extends PluginPanel
 	/** Staff notes: the general notes page, and the notes under a clanmate's profile. Each list sits above a form
 	 * that isn't redrawn, so a note being typed survives refreshes. */
 	private final JPanel staffTab = PanelParts.column();
+	private final JPanel staffMotdTab = PanelParts.column();
+	private final JPanel staffNewsTab = PanelParts.column();
+	private final JPanel staffNotesTab = PanelParts.column();
+	private final JPanel staffRanksTab = PanelParts.column();
+	private final JPanel rankUpsList = PanelParts.column();
+	private StaffTabs.RankUps rankUps = new StaffTabs.RankUps(null, true, null, java.time.Instant.now());
+	private Runnable rankUpsLoader = () -> { };
+	private String motdText;
 	private final JPanel staffList = PanelParts.column();
 	private final JPanel memberProfileColumn = PanelParts.column();
 	private final JPanel memberNotesHolder = PanelParts.column();
 	private final JPanel memberNotesList = PanelParts.column();
-	private final JPanel staffHomeRow = PanelParts.column();
+	/** Home's last row: PBs across the width, or PBs and Staff tools side by side for staff. */
+	private final JPanel bottomRow = new JPanel(new java.awt.GridLayout(1, 1, 6, 6));
+	private boolean bottomRowStaff;
 	private StaffTabs.Form staffForm;
 	private StaffTabs.MotdForm motdForm;
 	private StaffTabs.NewsForm newsForm;
@@ -264,6 +284,7 @@ class AsgardiansPanel extends PluginPanel
 		pages.put(EVENTS, eventsTab);
 		pages.put(BINGO, bingoTab);
 		pages.put(GROUPS, groupsTab);
+		pages.put(PARTY, partyTab);
 		pages.put(MEMBERS, membersTab);
 		buildMemberSearch();
 		pages.put(DROPS, statsTab);
@@ -275,6 +296,10 @@ class AsgardiansPanel extends PluginPanel
 		pages.put(SETTINGS, settingsTab);
 		pages.put(EVENT, eventTab);
 		pages.put(STAFF, staffTab);
+		pages.put(STAFF_MOTD, staffMotdTab);
+		pages.put(STAFF_NEWS, staffNewsTab);
+		pages.put(STAFF_NOTES, staffNotesTab);
+		pages.put(STAFF_RANKS, staffRanksTab);
 		buildStaff();
 
 		header = new PanelChrome.Header(this::refreshPage, () ->
@@ -292,13 +317,23 @@ class AsgardiansPanel extends PluginPanel
 
 		view.setLayout(new BorderLayout());
 		view.setOpaque(false);
-		scroll = new javax.swing.JScrollPane(view, javax.swing.JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+		// The scroll bar is always there, so the page is always the same width. With a bar that comes and goes, a
+		// page just the height of the panel (a bingo board with a tile open) bounced forever: the bar appeared, the
+		// board shrank to fit beside it, the bar went, the board grew back... While there's nothing to scroll the
+		// bar is switched off, which leaves an empty strip rather than a thumb.
+		scroll = new javax.swing.JScrollPane(view, javax.swing.JScrollPane.VERTICAL_SCROLLBAR_ALWAYS,
 			javax.swing.JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 		scroll.setBorder(null);
 		scroll.setOpaque(false);
 		scroll.getViewport().setOpaque(false);
-		scroll.getVerticalScrollBar().setUnitIncrement(16);
-		scroll.getVerticalScrollBar().setPreferredSize(new java.awt.Dimension(6, 0));
+		javax.swing.JScrollBar bar = scroll.getVerticalScrollBar();
+		bar.setUnitIncrement(16);
+		bar.setPreferredSize(new java.awt.Dimension(SCROLLBAR, 0));
+		bar.getModel().addChangeListener(e ->
+		{
+			javax.swing.BoundedRangeModel m = bar.getModel();
+			bar.setEnabled(m.getMaximum() - m.getMinimum() > m.getExtent());
+		});
 		add(scroll, BorderLayout.CENTER);
 
 		footer = new PanelChrome.Footer(() -> show(PROFILE));
@@ -355,12 +390,47 @@ class AsgardiansPanel extends PluginPanel
 			motdRow.add(Box.createVerticalStrut(6));
 		}
 		motdRow.setVisible(text != null);
+		motdText = text;
+		updateStaffTiles();
 		if (motdForm != null)
 		{
 			motdForm.current(text);
 		}
 		motdRow.revalidate();
 		motdRow.repaint();
+	}
+
+	/** How the panel loads the members due a rank up. */
+	void setRankUpsLoader(Runnable loader)
+	{
+		rankUpsLoader = loader != null ? loader : () -> { };
+	}
+
+	/** Members due a rank up arrived (or why they didn't). */
+	void updateRankUps(StaffTabs.RankUps input)
+	{
+		rankUps = input;
+		keepingScroll(rankUpsList, () -> StaffTabs.drawRankUps(rankUpsList, rankUps, this::openProfile));
+		updateStaffTiles();
+		updateHeader();
+	}
+
+	/** The lines on the Staff tools tiles. */
+	private void updateStaffTiles()
+	{
+		if (tiles.get(STAFF_RANKS) == null)
+		{
+			return;
+		}
+		int due = rankUps.getMembers() != null ? rankUps.getMembers().size() : -1;
+		tiles.get(STAFF_RANKS).setLine(due < 0 ? " " : due == 0 ? "None due" : due + " due", due > 0 ? HIGHLIGHT : QUIET);
+		tiles.get(STAFF_MOTD).setLine(motdText != null ? "Showing now" : "None set", motdText != null ? GOOD : QUIET);
+		int notes = staffNotes.getNotes() != null ? staffNotes.getNotes().size() : -1;
+		tiles.get(STAFF_NOTES).setLine(notes < 0 ? " " : notes == 1 ? "1 note" : notes + " notes", QUIET);
+		if (tiles.get(STAFF) != null)
+		{
+			tiles.get(STAFF).setLine(due > 0 ? due + " rank up" + (due == 1 ? "" : "s") + " due" : "Staff only", due > 0 ? HIGHLIGHT : QUIET);
+		}
 	}
 
 	/** How a staff change went: "motd" or "news". */
@@ -387,6 +457,7 @@ class AsgardiansPanel extends PluginPanel
 		{
 			staffNotes = input;
 			keepingScroll(staffList, () -> StaffTabs.drawNotes(staffList, null, staffNotes, staffUi));
+			updateStaffTiles();
 		}
 		else if (DropRecorder.sameRsn(rsn, memberNotesRsn))
 		{
@@ -459,13 +530,27 @@ class AsgardiansPanel extends PluginPanel
 		motdCard.add(small("Every member sees it at login and on Home.", QUIET));
 		motdCard.gap();
 		motdCard.add(motdForm);
-		addCard(staffTab, motdCard);
+		addCard(staffMotdTab, motdCard);
 		Card newsCard = new Card("Post to News");
 		newsCard.add(small("Shows on the News page and in chat, like posts made on the website.", QUIET));
 		newsCard.gap();
 		newsCard.add(newsForm);
-		addCard(staffTab, newsCard);
-		addCard(staffTab, StaffTabs.card("Staff notes", staffList, staffForm));
+		addCard(staffNewsTab, newsCard);
+		addCard(staffNotesTab, StaffTabs.card(null, staffList, staffForm));
+		rankUpsList.setAlignmentX(LEFT_ALIGNMENT);
+		staffRanksTab.add(rankUpsList);
+		StaffTabs.drawRankUps(rankUpsList, rankUps, this::openProfile);
+		// The Staff tools home: a tile for each area, like Home.
+		JPanel staffGrid = new JPanel(new java.awt.GridLayout(0, 2, 6, 6));
+		staffGrid.setOpaque(false);
+		addTile(staffGrid, STAFF_RANKS, PanelChrome.Icon.STAFF, "Rank ups");
+		addTile(staffGrid, STAFF_MOTD, PanelChrome.Icon.STAFF, "MOTD");
+		addTile(staffGrid, STAFF_NEWS, PanelChrome.Icon.NEWS, "Post to News");
+		addTile(staffGrid, STAFF_NOTES, PanelChrome.Icon.STAFF, "Staff notes");
+		tiles.get(STAFF_NEWS).setLine("Post an update", QUIET);
+		staffGrid.setAlignmentX(LEFT_ALIGNMENT);
+		staffTab.add(staffGrid);
+		updateStaffTiles();
 		memberTab.add(memberProfileColumn);
 		memberProfileColumn.setAlignmentX(LEFT_ALIGNMENT);
 		memberNotesHolder.setAlignmentX(LEFT_ALIGNMENT);
@@ -569,6 +654,19 @@ class AsgardiansPanel extends PluginPanel
 				break;
 			case STAFF:
 				staffLoader.accept(null);
+				rankUpsLoader.run();
+				break;
+			case STAFF_NOTES:
+				staffLoader.accept(null);
+				break;
+			case STAFF_RANKS:
+				rankUpsLoader.run();
+				break;
+			case PARTY:
+				if (lastParty != null && partyActions != null)
+				{
+					keepingScroll(partyTab, () -> PartyTabs.draw(partyTab, lastParty, partyActions));
+				}
 				break;
 			default:
 		}
@@ -651,6 +749,13 @@ class AsgardiansPanel extends PluginPanel
 				break;
 			case STAFF:
 				staffLoader.accept(null);
+				rankUpsLoader.run();
+				break;
+			case STAFF_NOTES:
+				staffLoader.accept(null);
+				break;
+			case STAFF_RANKS:
+				rankUpsLoader.run();
 				break;
 			case HOME:
 				refreshClan.run();
@@ -685,8 +790,12 @@ class AsgardiansPanel extends PluginPanel
 					? "Ends in " + ClanView.countdown(lastInput.getNow(), ev.getEvent().end()) : "No bingo running";
 				break;
 			case GROUPS:
-				title = "Groups";
+				title = "LFG";
 				sub = tiles.get(GROUPS).line();
+				break;
+			case PARTY:
+				title = "Party";
+				sub = lastParty != null && lastParty.isInParty() ? PartyTabs.subtitle(lastParty) : "Not in a party";
 				break;
 			case MEMBERS:
 				title = "Members";
@@ -726,6 +835,22 @@ class AsgardiansPanel extends PluginPanel
 				title = "Staff tools";
 				sub = "Staff only";
 				break;
+			case STAFF_MOTD:
+				title = "Message of the day";
+				sub = "Staff tools";
+				break;
+			case STAFF_NEWS:
+				title = "Post to News";
+				sub = "Staff tools";
+				break;
+			case STAFF_NOTES:
+				title = "Staff notes";
+				sub = "Staff tools";
+				break;
+			case STAFF_RANKS:
+				title = "Rank ups";
+				sub = rankUps.getMembers() != null ? rankUps.getMembers().size() + " due" : "Staff tools";
+				break;
 			default:
 				title = "Personal bests";
 				sub = "Clan records";
@@ -748,31 +873,57 @@ class AsgardiansPanel extends PluginPanel
 		grid.setOpaque(false);
 		addTile(grid, EVENTS, PanelChrome.Icon.EVENTS, "Events");
 		addTile(grid, BINGO, PanelChrome.Icon.BINGO, "Bingo");
-		addTile(grid, GROUPS, PanelChrome.Icon.GROUPS, "Groups");
+		addTile(grid, GROUPS, PanelChrome.Icon.GROUPS, "LFG");
+		addTile(grid, PARTY, PanelChrome.Icon.PARTY, "Party");
 		addTile(grid, MEMBERS, PanelChrome.Icon.MEMBERS, "Members");
 		addTile(grid, DROPS, PanelChrome.Icon.DROPS, "Drops");
 		addTile(grid, LEADERBOARD, PanelChrome.Icon.LEADERBOARD, "Leaderboard");
 		addTile(grid, PROFILE, PanelChrome.Icon.PROFILE, "Profile");
-		addTile(grid, NEWS, PanelChrome.Icon.NEWS, "News");
+		tiles.get(PARTY).setLine("Not in one", QUIET);
 		grid.setAlignmentX(LEFT_ALIGNMENT);
 		homeTab.add(grid);
 		homeTab.add(Box.createVerticalStrut(6));
-		// The odd one out goes across the width.
-		JPanel wide = new JPanel(new java.awt.GridLayout(1, 1));
-		wide.setOpaque(false);
-		addTile(wide, PBS, PanelChrome.Icon.PBS, "PBs");
-		wide.setAlignmentX(LEFT_ALIGNMENT);
-		homeTab.add(wide);
+		// News and PBs share the last row; staff get Staff tools across the width below them.
+		bottomRow.setOpaque(false);
+		addTile(bottomRow, NEWS, PanelChrome.Icon.NEWS, "News");
+		addTile(bottomRow, PBS, PanelChrome.Icon.PBS, "PBs");
+		addTile(bottomRow, STAFF, PanelChrome.Icon.STAFF, "Staff tools");
+		tiles.get(STAFF).setLine("Staff only", QUIET);
+		bottomRow.setAlignmentX(LEFT_ALIGNMENT);
+		homeTab.add(bottomRow);
+		layoutBottomRow(false);
 		voiceRow.setAlignmentX(LEFT_ALIGNMENT);
 		homeTab.add(voiceRow);
-		staffHomeRow.setAlignmentX(LEFT_ALIGNMENT);
-		homeTab.add(staffHomeRow);
-		JPanel staffButton = new JPanel(new BorderLayout());
-		staffButton.setOpaque(false);
-		staffButton.add(button("Staff tools", () -> show(STAFF)), BorderLayout.CENTER);
-		staffHomeRow.add(Box.createVerticalStrut(6));
-		staffHomeRow.add(staffButton);
-		staffHomeRow.setVisible(false);
+	}
+
+	/** News and PBs side by side, then Staff tools across the width for staff. */
+	private void layoutBottomRow(boolean staff)
+	{
+		bottomRowStaff = staff;
+		bottomRow.removeAll();
+		bottomRow.setLayout(new java.awt.GridBagLayout());
+		java.awt.GridBagConstraints at = new java.awt.GridBagConstraints();
+		at.fill = java.awt.GridBagConstraints.BOTH;
+		at.weightx = 1;
+		at.insets = new java.awt.Insets(0, 0, 0, 3);
+		bottomRow.add(tiles.get(NEWS), at);
+		at.gridx = 1;
+		at.insets = new java.awt.Insets(0, 3, 0, 0);
+		bottomRow.add(tiles.get(PBS), at);
+		if (staff)
+		{
+			at.gridx = 0;
+			at.gridy = 1;
+			at.gridwidth = 2;
+			at.insets = new java.awt.Insets(6, 0, 0, 0);
+			bottomRow.add(tiles.get(STAFF), at);
+		}
+		bottomRow.revalidate();
+		bottomRow.repaint();
+		if (lastStats != null)
+		{
+			tiles.get(PBS).setLine(pbLine(lastStats.getFeed(), staff), QUIET);
+		}
 	}
 
 	private void addTile(JPanel parent, String name, PanelChrome.Icon icon, String label)
@@ -863,7 +1014,7 @@ class AsgardiansPanel extends PluginPanel
 		String ago = drop != null ? ClanView.ago(drop.time(), now).replace(" ago", "") : "";
 		tiles.get(DROPS).setLine(drop != null && drop.getItem() != null
 			? drop.getItem() + (ago.isEmpty() ? "" : " · " + ago) : " ", QUIET);
-		tiles.get(PBS).setLine(pbLine(feed), QUIET);
+		tiles.get(PBS).setLine(pbLine(feed, bottomRowStaff), QUIET);
 		// Profile
 		State st = lastState;
 		if (st != null && st.getRsn() != null)
@@ -908,7 +1059,13 @@ class AsgardiansPanel extends PluginPanel
 		pictures.sprite(SPRITE_STATS, img -> setTilePicture(LEADERBOARD, img));
 		pictures.item(net.runelite.api.gameval.ItemID.COINS, 10000, img -> setTilePicture(DROPS, img));
 		pictures.item(NEWSPAPER, 1, img -> setTilePicture(NEWS, img));
+		pictures.item(net.runelite.api.gameval.ItemID.RED_PARTYHAT, 1, img -> setTilePicture(PARTY, img));
 		pictures.item(GOLD_SPEEDRUN_TROPHY, 1, img -> setTilePicture(PBS, img));
+		pictures.item(net.runelite.api.gameval.ItemID.ROYAL_CROWN, 1, img -> setTilePicture(STAFF, img));
+		pictures.item(net.runelite.api.gameval.ItemID.CLAN_VEXILLUM_ORANGE, 1, img -> setTilePicture(STAFF_RANKS, img));
+		pictures.item(net.runelite.api.gameval.ItemID.TRAIL_CLUE_EASY_SIMPLE001, 1, img -> setTilePicture(STAFF_MOTD, img));
+		pictures.item(NEWSPAPER, 1, img -> setTilePicture(STAFF_NEWS, img));
+		pictures.item(net.runelite.api.gameval.ItemID.FEATHER, 1, img -> setTilePicture(STAFF_NOTES, img));
 		setTilePicture(BINGO, resource("tile_bingo.png"));
 		setTilePicture(GROUPS, resource("tile_groups.png"));
 		setTilePicture(PROFILE, resource("tile_profile.png"));
@@ -942,7 +1099,8 @@ class AsgardiansPanel extends PluginPanel
 	}
 
 	/** The PBs tile: a clan record when the website sends them, else the newest PB. */
-	private static String pbLine(ClanData.StatsFeed feed)
+	/** The PBs tile's line. On a half-width tile (beside Staff tools) the time comes first, so it isn't cut off. */
+	private static String pbLine(ClanData.StatsFeed feed, boolean narrow)
 	{
 		if (feed == null)
 		{
@@ -955,7 +1113,8 @@ class AsgardiansPanel extends PluginPanel
 				if (r != null && r.getBoss() != null && r.getEntries() != null && !r.getEntries().isEmpty() && r.getEntries().get(0) != null
 					&& r.getEntries().get(0).getSeconds() != null)
 				{
-					return "Record: " + r.getBoss() + " " + StatsTabs.time(r.getEntries().get(0).getSeconds());
+					String time = StatsTabs.time(r.getEntries().get(0).getSeconds());
+					return narrow ? time + " · " + r.getBoss() : "Record: " + r.getBoss() + " " + time;
 				}
 			}
 		}
@@ -1255,6 +1414,51 @@ class AsgardiansPanel extends PluginPanel
 		}
 	}
 
+	void setPartyActions(PartyTabs.Actions actions)
+	{
+		this.partyActions = actions;
+	}
+
+	/** Redraws the Party tab, only when something shown has changed (it's checked every game tick while open). */
+	void updateParty(PartyTabs.Input input)
+	{
+		if (input.equals(lastParty) || partyActions == null)
+		{
+			return;
+		}
+		lastParty = input;
+		updatePartyTile();
+		if (PARTY.equals(page))
+		{
+			keepingScroll(partyTab, () -> PartyTabs.draw(partyTab, input, partyActions));
+			updateHeader();
+		}
+	}
+
+	/** Home's Party tile: the party's name and size, or that they aren't in one. */
+	private void updatePartyTile()
+	{
+		PanelChrome.Tile tile = tiles.get(PARTY);
+		if (tile == null)
+		{
+			return;
+		}
+		if (lastParty != null && lastParty.isInParty())
+		{
+			tile.setLine(lastParty.getPassphrase() + " (" + lastParty.getMembers().size() + ")", GOOD);
+		}
+		else
+		{
+			tile.setLine("Not in one", QUIET);
+		}
+	}
+
+	/** True while the side panel is open on the Party page. Safe from any thread. */
+	boolean partyShown()
+	{
+		return partyShown;
+	}
+
 	/** Clears the "Start a group" note once a group has started. */
 	void groupStarted()
 	{
@@ -1284,6 +1488,7 @@ class AsgardiansPanel extends PluginPanel
 	private void updateShown()
 	{
 		groupsShown = panelOpen && GROUPS.equals(page);
+		partyShown = panelOpen && PARTY.equals(page);
 		statsShown = panelOpen && (DROPS.equals(page) || PBS.equals(page));
 		membersShown = panelOpen && (MEMBERS.equals(page) || MEMBER.equals(page));
 	}
@@ -1295,7 +1500,10 @@ class AsgardiansPanel extends PluginPanel
 		updateFooter(state);
 		redrawProfile();
 		updateTiles();
-		staffHomeRow.setVisible(isStaff());
+		if (isStaff() != bottomRowStaff)
+		{
+			layoutBottomRow(isStaff());
+		}
 	}
 
 	/** The member's own profile: the clan profile, then what the plugin is sending. */
@@ -1666,6 +1874,9 @@ class AsgardiansPanel extends PluginPanel
 	}
 
 	/** The scroll pane's view: as wide as the panel, as tall as the page. */
+	/** The scroll bar's width. */
+	static final int SCROLLBAR = 6;
+
 	private static class ScrollColumn extends JPanel implements javax.swing.Scrollable
 	{
 		@Override

@@ -199,6 +199,19 @@ public class AsgardiansPlugin extends Plugin
 	@Inject
 	private net.runelite.client.party.PartyService partyService;
 
+	@Inject
+	private net.runelite.client.party.WSClient wsClient;
+
+	// ---- RuneLite party and ready checks ----
+	private final ReadyCheck readyCheck = new ReadyCheck();
+	/** Names party members gave in our own messages, for when RuneLite's Party plugin is off and hasn't named them. */
+	private final Map<Long, String> partyNames = new java.util.concurrent.ConcurrentHashMap<>();
+	/** The party's members in order, ID to name, refreshed every tick. */
+	private volatile Map<Long, String> partyOrder = Map.of();
+	/** The ready check whose result was said in chat, so it's said once. */
+	private long readyAnnounced;
+	private ReadyCheckOverlay readyCheckOverlay;
+
 	// ---- group finder ----
 	private static final long GROUP_IN_GROUP_MILLIS = TimeUnit.SECONDS.toMillis(10);
 	private static final long GROUP_ALERT_MILLIS = TimeUnit.SECONDS.toMillis(20);
@@ -395,6 +408,10 @@ public class AsgardiansPlugin extends Plugin
 		}
 		codewordOverlay = new CodewordOverlay(this, config, () -> clanView);
 		overlayManager.add(codewordOverlay);
+		wsClient.registerMessage(AsgReadyCheck.class);
+		wsClient.registerMessage(AsgReadyAnswer.class);
+		readyCheckOverlay = new ReadyCheckOverlay(this, () -> config.readyChecks() ? readyView() : null, this::answerReadyCheck);
+		overlayManager.add(readyCheckOverlay);
 		groupAlertOverlay = new GroupAlertOverlay(this, () -> config.groupOverlay(), System::currentTimeMillis);
 		overlayManager.add(groupAlertOverlay);
 
@@ -521,6 +538,51 @@ public class AsgardiansPlugin extends Plugin
 		});
 		panel.setProfileLoader(rsn -> executor.execute(() -> fetchProfile(rsn)));
 		panel.setMembersRefresh(() -> executor.execute(this::fetchMemberActivity));
+		panel.setRankUpsLoader(() -> executor.execute(this::fetchRankUps));
+		panel.setPartyActions(new PartyTabs.Actions()
+		{
+			@Override
+			public void startParty()
+			{
+				// RuneLite's own word passphrases can't be generated from a plugin, and a short name is easier to share.
+				changeParty(PartyTabs.newPartyName(new java.util.Random()));
+			}
+
+			@Override
+			public void joinParty(String passphrase)
+			{
+				changeParty(passphrase);
+			}
+
+			@Override
+			public void leaveParty()
+			{
+				changeParty(null);
+			}
+
+			@Override
+			public void copyPassphrase()
+			{
+				String pass = partyService.getPartyPassphrase();
+				if (pass != null)
+				{
+					java.awt.Toolkit.getDefaultToolkit().getSystemClipboard()
+						.setContents(new java.awt.datatransfer.StringSelection(pass), null);
+				}
+			}
+
+			@Override
+			public void readyCheck()
+			{
+				startReadyCheck();
+			}
+
+			@Override
+			public void answer(boolean ready)
+			{
+				answerReadyCheck(ready);
+			}
+		});
 		panel.setStaffActions(rsn -> executor.execute(() -> staffNotes(rsn, null, null)), new StaffTabs.Actions()
 		{
 			@Override
@@ -598,6 +660,17 @@ public class AsgardiansPlugin extends Plugin
 		{
 			overlayManager.remove(codewordOverlay);
 		}
+		wsClient.unregisterMessage(AsgReadyCheck.class);
+		wsClient.unregisterMessage(AsgReadyAnswer.class);
+		if (readyCheckOverlay != null)
+		{
+			overlayManager.remove(readyCheckOverlay);
+			readyCheckOverlay = null;
+		}
+		synchronized (readyCheck)
+		{
+			readyCheck.clear();
+		}
 		executor.execute(this::flush);
 		if (navButton != null)
 		{
@@ -653,6 +726,30 @@ public class AsgardiansPlugin extends Plugin
 	public void onClanChannelChanged(ClanChannelChanged event)
 	{
 		onAccountState();
+		staffTilePicture();
+	}
+
+	/** The game's list of clan title icons, by title ID (as RuneLite's chat icons use it). */
+	private static final int CLAN_TITLE_ICONS_ENUM = 3798;
+
+	/**
+	 * The Staff tools tile shows the clan's Deputy Owner icon (the silver key, unless the clan changed it), loaded
+	 * from the game once the member's clan is known. Until then it keeps its crown. Client thread.
+	 */
+	private void staffTilePicture()
+	{
+		AsgardiansPanel target = panel;
+		ClanSettings clan = client.getClanSettings();
+		net.runelite.api.clan.ClanTitle title = clan != null ? clan.titleForRank(net.runelite.api.clan.ClanRank.DEPUTY_OWNER) : null;
+		if (target == null || title == null)
+		{
+			return;
+		}
+		int sprite = client.getEnum(CLAN_TITLE_ICONS_ENUM).getIntValue(title.getId());
+		if (sprite > 0)
+		{
+			spriteManager.getSpriteAsync(sprite, 0, img -> SwingUtilities.invokeLater(() -> target.setTilePicture(AsgardiansPanel.STAFF, img)));
+		}
 	}
 
 	@Subscribe
@@ -1200,7 +1297,7 @@ public class AsgardiansPlugin extends Plugin
 
 	/**
 	 * Every 5 seconds: checks in while the member is in a group (so the website knows they're still there), and
-	 * otherwise loads the open groups, more often while the Groups tab is open or new groups are announced in chat.
+	 * otherwise loads the open groups, more often while the LFG tab is open or new groups are announced in chat.
 	 */
 	private void groupTick()
 	{
@@ -1377,7 +1474,7 @@ public class AsgardiansPlugin extends Plugin
 		});
 	}
 
-	/** Safe from any thread: redraws the Groups tab from the last list. */
+	/** Safe from any thread: redraws the LFG tab from the last list. */
 	private void refreshGroupsPanel()
 	{
 		if (!client.isClientThread())
@@ -1413,9 +1510,264 @@ public class AsgardiansPlugin extends Plugin
 		SwingUtilities.invokeLater(() -> target.updateGroups(input));
 	}
 
+	// ---- RuneLite party and ready checks ----
+
+	/** Swing thread: moves the member to another RuneLite party (null leaves it). */
+	private void changeParty(String passphrase)
+	{
+		try
+		{
+			partyService.changeParty(passphrase);
+		}
+		catch (RuntimeException e)
+		{
+			log.debug("Asgardians couldn't change party: {}", e.getMessage());
+		}
+		clientThread.invokeLater(this::refreshPartyPanel);
+	}
+
+	/** The party's members in order, ID to name. Client thread. */
+	private Map<Long, String> partyMembers()
+	{
+		Map<Long, String> out = new java.util.LinkedHashMap<>();
+		if (!partyService.isInParty())
+		{
+			return out;
+		}
+		for (net.runelite.client.party.PartyMember m : partyService.getMembers())
+		{
+			out.put(m.getMemberId(), partyName(m));
+		}
+		return out;
+	}
+
+	/** The member's character name: from RuneLite's Party plugin, else from our own messages. Client thread. */
+	private String partyName(net.runelite.client.party.PartyMember m)
+	{
+		String n = m.getDisplayName();
+		if (n != null && !n.isEmpty() && !n.startsWith("<"))
+		{
+			return Text.sanitize(n);
+		}
+		net.runelite.client.party.PartyMember local = partyService.getLocalMember();
+		Player me = client.getLocalPlayer();
+		if (local != null && local.getMemberId() == m.getMemberId() && me != null && me.getName() != null)
+		{
+			return Text.sanitize(me.getName());
+		}
+		return partyNames.getOrDefault(m.getMemberId(), "Party member");
+	}
+
+	private long myPartyId()
+	{
+		net.runelite.client.party.PartyMember local = partyService.getLocalMember();
+		return local != null ? local.getMemberId() : -1;
+	}
+
+	/** The ready check as it stands, or null. Any thread. */
+	private ReadyCheck.View readyView()
+	{
+		synchronized (readyCheck)
+		{
+			return readyCheck.view(partyOrder, myPartyId(), System.currentTimeMillis());
+		}
+	}
+
+	/** Any thread: starts a ready check in the member's party; the starter counts as ready. */
+	private void startReadyCheck()
+	{
+		clientThread.invokeLater(() ->
+		{
+			if (!partyService.isInParty() || partyService.getLocalMember() == null)
+			{
+				return;
+			}
+			long key = System.currentTimeMillis();
+			String me = partyName(partyService.getLocalMember());
+			synchronized (readyCheck)
+			{
+				readyCheck.start(key, me, key);
+			}
+			AsgReadyCheck msg = new AsgReadyCheck();
+			msg.setStarted(key);
+			msg.setName(me);
+			msg.setMemberId(myPartyId());
+			partyService.send(msg);
+			answerReadyCheck(true);
+		});
+	}
+
+	/** Any thread: the member's own answer to the running check, sent to the party. */
+	private void answerReadyCheck(boolean ready)
+	{
+		clientThread.invokeLater(() ->
+		{
+			long id = myPartyId();
+			long key;
+			synchronized (readyCheck)
+			{
+				key = readyCheck.key();
+				if (key == 0 || id < 0 || !readyCheck.answer(key, id, ready, System.currentTimeMillis()))
+				{
+					return;
+				}
+			}
+			AsgReadyAnswer msg = new AsgReadyAnswer();
+			msg.setStarted(key);
+			msg.setReady(ready);
+			msg.setName(partyName(partyService.getLocalMember()));
+			msg.setMemberId(id);
+			partyService.send(msg);
+			refreshPartyPanel();
+		});
+	}
+
+	@Subscribe
+	public void onAsgReadyCheck(AsgReadyCheck m)
+	{
+		if (m.getName() != null)
+		{
+			partyNames.put(m.getMemberId(), m.getName());
+		}
+		boolean isNew;
+		synchronized (readyCheck)
+		{
+			isNew = readyCheck.start(m.getStarted(), m.getName(), System.currentTimeMillis());
+			readyCheck.answer(m.getStarted(), m.getMemberId(), true, System.currentTimeMillis());
+		}
+		clientThread.invokeLater(() ->
+		{
+			if (isNew && m.getMemberId() != myPartyId() && config.readyChecks())
+			{
+				chat((m.getName() != null ? m.getName() : "A party member") + " started a ready check. Right-click the box at the top of the screen to answer.");
+				playSound(net.runelite.api.SoundEffectID.TOWN_CRIER_BELL_DING, config.readyCheckVolume());
+			}
+			refreshPartyPanel();
+		});
+	}
+
+	@Subscribe
+	public void onAsgReadyAnswer(AsgReadyAnswer m)
+	{
+		if (m.getName() != null)
+		{
+			partyNames.put(m.getMemberId(), m.getName());
+		}
+		synchronized (readyCheck)
+		{
+			readyCheck.answer(m.getStarted(), m.getMemberId(), m.isReady(), System.currentTimeMillis());
+		}
+		clientThread.invokeLater(this::refreshPartyPanel);
+	}
+
+	@Subscribe
+	public void onUserJoin(net.runelite.client.party.events.UserJoin event)
+	{
+		clientThread.invokeLater(this::refreshPartyPanel);
+	}
+
+	@Subscribe
+	public void onUserPart(net.runelite.client.party.events.UserPart event)
+	{
+		clientThread.invokeLater(this::refreshPartyPanel);
+	}
+
+	@Subscribe
+	public void onPartyChanged(net.runelite.client.events.PartyChanged event)
+	{
+		synchronized (readyCheck)
+		{
+			readyCheck.clear();
+		}
+		partyNames.clear();
+		clientThread.invokeLater(this::refreshPartyPanel);
+	}
+
+	/** Every tick: the party's names for the overlay, the check's result in chat once, and the Party tab while open. */
+	private void updateParty()
+	{
+		partyOrder = partyMembers();
+		ReadyCheck.View v = readyView();
+		long key;
+		synchronized (readyCheck)
+		{
+			key = readyCheck.key();
+		}
+		if (v != null && v.isOver() && key != readyAnnounced)
+		{
+			readyAnnounced = key;
+			if (config.readyChecks())
+			{
+				chat("Ready check: " + v.summary());
+			}
+		}
+		// HP and prayer change all the time, so the page is refreshed every tick while it's open; otherwise every few
+		// ticks, for the Home tile.
+		AsgardiansPanel target = panel;
+		if (target != null && (target.partyShown() || client.getTickCount() % 5 == 0))
+		{
+			refreshPartyPanel();
+		}
+	}
+
+	/** Client thread: redraws the Party tab. */
+	private void refreshPartyPanel()
+	{
+		AsgardiansPanel target = panel;
+		if (target == null)
+		{
+			return;
+		}
+		boolean in = partyService.isInParty();
+		long myId = myPartyId();
+		List<PartyTabs.Member> members = new ArrayList<>();
+		Map<String, Integer> online = onlineMembers();
+		boolean shared = false;
+		List<net.runelite.client.party.PartyMember> all = in ? partyService.getMembers() : List.of();
+		for (net.runelite.client.party.PartyMember m : all)
+		{
+			shared |= m.isLoggedIn();
+		}
+		for (net.runelite.client.party.PartyMember m : all)
+		{
+			String name = partyName(m);
+			int hp = 0;
+			int hpMax = 0;
+			int prayer = 0;
+			int prayerMax = 0;
+			try
+			{
+				hpMax = m.getStatBase(Skill.HITPOINTS);
+				hp = m.getStatBoost(Skill.HITPOINTS);
+				prayerMax = m.getStatBase(Skill.PRAYER);
+				prayer = m.getStatBoost(Skill.PRAYER);
+			}
+			catch (RuntimeException e)
+			{
+				// RuneLite's Party plugin is off, so nobody's stats are shared.
+				hp = hpMax = prayer = prayerMax = 0;
+			}
+			boolean isMe = m.getMemberId() == myId;
+			// Without the Party plugin nobody shows as logged in, so don't mark them all as logged out.
+			boolean loggedIn = !shared || m.isLoggedIn() || (isMe && client.getGameState() == GameState.LOGGED_IN);
+			members.add(new PartyTabs.Member(name, isMe, loggedIn, online.containsKey(name.toLowerCase(java.util.Locale.UK)),
+				hp, hpMax, prayer, prayerMax));
+		}
+		String group = null;
+		ClanData.GroupList list = groups;
+		ClanData.Group mine = list != null ? list.mineGroup() : null;
+		String pass = partyService.getPartyPassphrase();
+		if (in && mine != null && mine.getParty() != null && mine.getParty().trim().equals(pass))
+		{
+			group = Groups.shortTitle(mine, GroupTabs.activity(mine, groupActivities));
+		}
+		PartyTabs.Input input = new PartyTabs.Input(in, pass, group, members, in ? readyView() : null);
+		SwingUtilities.invokeLater(() -> target.updateParty(input));
+	}
+
 	// ---- group alert bells ----
 
-	/** The member's bells, saved as "id=1,id=0". Hidden from the settings panel; changed from the Groups tab. */
+	/** The member's bells, saved as "id=1,id=0". Hidden from the settings panel; changed from the LFG tab. */
 	private static final String GROUP_BELLS_KEY = "groupBells";
 	private static final String GROUP_BELLS_OPEN_KEY = "groupBellsOpen";
 
@@ -2661,6 +3013,36 @@ public class AsgardiansPlugin extends Plugin
 		});
 	}
 
+	/** Members due a rank up, for staff. Executor thread. */
+	private void fetchRankUps()
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		AsgardiansPanel target = panel;
+		if (target == null)
+		{
+			return;
+		}
+		if (key == null || !sharing)
+		{
+			SwingUtilities.invokeLater(() -> target.updateRankUps(new StaffTabs.RankUps(null, false,
+				"Turn on \"Share my data with Asgardians\" and log in to see rank ups.", java.time.Instant.now())));
+			return;
+		}
+		api.get(ApiClient.endpoint(address, "staff/rankups"), key, ClanData.RankUpList.class, result ->
+		{
+			int status = result.getStatus();
+			boolean ok = result.ok() && result.getBody().getMembers() != null;
+			String error = ok ? null
+				: status == 403 ? "Only clan staff can see rank ups."
+				: status == 404 || (status >= 200 && status < 300) ? "The clan website doesn't list rank ups yet."
+				: "Rank ups couldn't be loaded. Try again in a moment.";
+			SwingUtilities.invokeLater(() -> target.updateRankUps(new StaffTabs.RankUps(ok ? result.getBody().getMembers() : null, false,
+				error, java.time.Instant.now())));
+		});
+	}
+
 	/** Staff set the message of the day (empty clears it) or post to News. Executor thread. */
 	private void staffPost(String which, com.google.gson.JsonObject body)
 	{
@@ -2833,6 +3215,16 @@ public class AsgardiansPlugin extends Plugin
 			record.setSource(new Record.Source(pb.getBoss(), null));
 			record.getSource().setKc(pb.getKc());
 			submit(record, settings.getScreenshots().isPbs());
+			if (config.pbRankMessages())
+			{
+				Player local = client.getLocalPlayer();
+				String line = AsgCommands.pbRank(stats, pb.getBoss(), pb.getTeamSize(), pb.getSeconds(),
+					local != null && local.getName() != null ? Text.sanitize(local.getName()) : null);
+				if (line != null)
+				{
+					chat(line);
+				}
+			}
 		});
 	}
 
@@ -3079,6 +3471,7 @@ public class AsgardiansPlugin extends Plugin
 			return;
 		}
 		updateActivity(local);
+		updateParty();
 		maybeReloadMap();
 		maybeSendXp();
 		sendPendingKcs(false);

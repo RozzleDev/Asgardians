@@ -81,7 +81,7 @@ final class Groups
 			if (DropRecorder.sameRsn(is.getHost(), me))
 			{
 				out.add("Your " + is.getTitle() + " group is open on " + world(is) + (is.isApproval()
-					? ". Others can ask to join from the Groups tab, and you pick who joins." : ". Others can join from the Groups tab."));
+					? ". Others can ask to join from the LFG tab, and you pick who joins." : ". Others can join from the LFG tab."));
 			}
 			else
 			{
@@ -103,7 +103,7 @@ final class Groups
 				if (m != null && m.getRsn() != null && !was.asked(m.getRsn()) && !is.has(m.getRsn()))
 				{
 					out.add(m.getRsn() + (m.getKc() != null ? " (" + m.getKc() + " kc)" : "")
-						+ " asked to join your group. Accept or decline in the Groups tab.");
+						+ " asked to join your group. Accept or decline in the LFG tab.");
 				}
 			}
 		}
@@ -201,7 +201,7 @@ final class Groups
 	static String startedLine(ClanData.Group g, String title)
 	{
 		return (g.getHost() != null ? g.getHost() : "Someone") + " started a group: " + title + ", " + g.seats() + ", "
-			+ world(g) + (g.isApproval() ? ". Ask to join from the Groups tab." : ". Join from the Groups tab.");
+			+ world(g) + (g.isApproval() ? ". Ask to join from the LFG tab." : ". Join from the LFG tab.");
 	}
 
 	/**

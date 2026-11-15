@@ -16,7 +16,7 @@ import net.runelite.client.ui.overlay.components.TitleComponent;
 
 /**
  * Shows new groups on screen for a short while, for the activities the member has the screen icon on for in the
- * Groups tab's "Group alerts". The newest is at the top, and only a few show at once.
+ * LFG tab's "Group alerts". The newest is at the top, and only a few show at once.
  */
 class GroupAlertOverlay extends OverlayPanel
 {
@@ -95,7 +95,7 @@ class GroupAlertOverlay extends OverlayPanel
 			panelComponent.getChildren().add(LineComponent.builder().left(a.getHost()).right(a.getWorld())
 				.leftColor(PanelParts.QUIET).rightColor(PanelParts.QUIET).build());
 		}
-		panelComponent.getChildren().add(LineComponent.builder().left("Join from the Groups tab").leftColor(PanelParts.QUIET).build());
+		panelComponent.getChildren().add(LineComponent.builder().left("Join from the LFG tab").leftColor(PanelParts.QUIET).build());
 		return super.render(graphics);
 	}
 }

@@ -176,7 +176,7 @@ public class GroupBellsTest
 		assertEquals("ToB (Entry mode)", Groups.shortTitle(list.getGroups().get(1), tob));
 		assertEquals("Nex", Groups.shortTitle(list.getGroups().get(2), nex));
 		assertEquals("Theatre of Blood (Hard mode)", Groups.shortTitle(hard, null));
-		assertEquals("Clo started a group: ToB HM, 1/4, W416. Join from the Groups tab.",
+		assertEquals("Clo started a group: ToB HM, 1/4, W416. Join from the LFG tab.",
 			Groups.startedLine(hard, Groups.shortTitle(hard, tob)));
 	}
 

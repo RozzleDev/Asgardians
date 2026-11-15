@@ -279,6 +279,58 @@ final class AsgCommands
 	}
 
 	/**
+	 * The chat line after a new PB: where it puts the member among the clan's best times for that boss and team size,
+	 * e.g. "Theatre of Blood (4-man) 15:30 is #3 in the clan. Record: Clo 14:52.40". Null when the clan has no times
+	 * for it (then nothing is said, rather than guessing).
+	 */
+	static String pbRank(ClanData.StatsFeed stats, String boss, String teamSize, double seconds, String me)
+	{
+		if (stats == null || stats.getRecords() == null || boss == null)
+		{
+			return null;
+		}
+		String size = teamSize == null ? "1" : teamSize;
+		for (ClanData.PbRecord r : stats.getRecords())
+		{
+			if (r == null || r.getBoss() == null || !r.getBoss().equalsIgnoreCase(boss.trim())
+				|| !size.equals(r.getTeamSize() == null ? "1" : r.getTeamSize()))
+			{
+				continue;
+			}
+			List<ClanData.StatEntry> others = new ArrayList<>();
+			for (ClanData.StatEntry e : ClanView.orEmpty(r.getEntries()))
+			{
+				if (e != null && e.getSeconds() != null && (me == null || e.getRsn() == null || !DropRecorder.sameRsn(e.getRsn(), me)))
+				{
+					others.add(e);
+				}
+			}
+			if (others.isEmpty())
+			{
+				return null;
+			}
+			int faster = 0;
+			for (ClanData.StatEntry e : others)
+			{
+				faster += e.getSeconds() < seconds ? 1 : 0;
+			}
+			String label = r.getBoss() + " (" + ("1".equals(size) ? "solo" : size + "-man") + ") " + StatsTabs.time(seconds);
+			ClanData.StatEntry best = others.get(0);
+			String record = (best.getRsn() != null ? best.getRsn() + " " : "") + StatsTabs.time(best.getSeconds());
+			if (faster == 0)
+			{
+				return label + " is the fastest in the clan! Previous record: " + record + ".";
+			}
+			if (faster >= others.size() && others.size() >= 5)
+			{
+				return label + " isn't in the clan's top " + others.size() + " yet. Record: " + record + ".";
+			}
+			return label + " is #" + (faster + 1) + " in the clan. Record: " + record + ".";
+		}
+		return null;
+	}
+
+	/**
 	 * The Cabbage high score: who's had the most consolation cabbages from the Fractured Archive's chest, from the
 	 * board titled "Cabbages". This month unless week, year or all is asked for.
 	 */

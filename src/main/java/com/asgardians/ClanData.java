@@ -242,6 +242,26 @@ final class ClanData
 		private String at;
 	}
 
+	/** GET /plugin/staff/rankups: members due a rank up, for staff. */
+	@Data
+	static class RankUpList
+	{
+		private List<RankUp> members;
+	}
+
+	@Data
+	static class RankUp
+	{
+		private String rsn;
+		/** Their rank now and the one they're due, as the website names them (e.g. "opal", "onyx"). */
+		private String rank;
+		private String nextRank;
+		/** Why, in a few words, e.g. "90 days in the clan" or "1.2B clan credit". Optional. */
+		private String reason;
+		/** When they became due (ISO-8601). Optional. */
+		private String since;
+	}
+
 	/** GET /plugin/staff/notes and /plugin/staff/members/{rsn}/notes, and the reply to adding or deleting one. Staff only. */
 	@Data
 	static class StaffNoteList
@@ -424,56 +444,127 @@ final class ClanData
 		private Integer pending;
 		/** The latest item sent for this tile. */
 		private TileItem latest;
-		/** "all": every listed item is needed. "any": one of them completes the tile. */
+		/**
+		 * How the tile completes from its items: "all" (every item, the default), "any" (one of them), "count"
+		 * ({@link #neededItems} different items) or "total" ({@link #neededItems} items, duplicates counting).
+		 */
 		private String mode;
+		/** For modes "count" and "total": how many items finish the tile (missing means 1). */
+		private Integer neededItems;
 		/** The items that count for this tile, each with its own count. */
 		private List<TileNeed> items;
 
-		/** Items accepted so far: the tile's own count, else worked out from its items. */
+		/** Items accepted so far, as {@link #tileProgress()} counts them. */
 		Integer accepted()
 		{
-			if (have != null || need != null)
-			{
-				return have;
-			}
-			int[] counts = fromItems();
-			return counts != null ? counts[0] : null;
+			int[] p = tileProgress();
+			return p != null ? p[0] : null;
 		}
 
-		/** Items needed: the tile's own count, else worked out from its items. */
+		/** What finishes the tile, as {@link #tileProgress()} counts it. */
 		Integer needed()
 		{
-			if (have != null || need != null)
-			{
-				return need;
-			}
-			int[] counts = fromItems();
-			return counts != null ? counts[1] : null;
+			int[] p = tileProgress();
+			return p != null ? p[1] : null;
 		}
 
-		/** {have, need} from the items: summed for "all", the closest item for "any". */
-		private int[] fromItems()
+		/**
+		 * The tile's progress as {have, need}, worked out the way the website decides a tile is complete, so every
+		 * view (chat lines, board, task cards) agrees. Have never goes past need. Null when the tile has no counts.
+		 * <ul>
+		 * <li>No items: the tile's own have / need.</li>
+		 * <li>"all" (or no mode): sum(min(have, need)) / sum(need), e.g. a whip and 2 of 3 shards is 3/4.</li>
+		 * <li>"any": min(items done, 1) / 1.</li>
+		 * <li>"count": min(items done, neededItems) / neededItems (different items; a 2nd Orion doesn't help).</li>
+		 * <li>"total": min(sum(have), neededItems) / neededItems (duplicates count: 2 Orions is 2/2).</li>
+		 * </ul>
+		 * An item is done when its have reaches its need (need defaults to 1); neededItems defaults to 1.
+		 */
+		int[] tileProgress()
 		{
 			if (items == null || items.isEmpty())
 			{
-				return null;
+				if (need == null)
+				{
+					return null;
+				}
+				int n = Math.max(need, 0);
+				return new int[]{Math.min(Math.max(have != null ? have : 0, 0), n), n};
 			}
-			boolean any = "any".equalsIgnoreCase(mode);
-			int haveSum = 0;
+			int done = 0;
+			int capped = 0;
+			int raw = 0;
 			int needSum = 0;
-			int[] best = null;
 			for (TileNeed item : items)
 			{
-				int n = Math.max(item.getNeed() != null ? item.getNeed() : 1, 1);
-				int h = Math.min(Math.max(item.getHave() != null ? item.getHave() : 0, 0), n);
-				haveSum += h;
-				needSum += n;
-				if (best == null || (double) h / n > (double) best[0] / best[1])
+				if (item == null)
 				{
-					best = new int[]{h, n};
+					continue;
 				}
+				int h = itemHave(item);
+				int n = itemNeed(item);
+				done += h >= n ? 1 : 0;
+				capped += Math.min(h, n);
+				raw += h;
+				needSum += n;
 			}
-			return any ? best : new int[]{haveSum, needSum};
+			int wanted = Math.max(neededItems != null ? neededItems : 1, 1);
+			if ("any".equalsIgnoreCase(mode))
+			{
+				return new int[]{Math.min(done, 1), 1};
+			}
+			if ("count".equalsIgnoreCase(mode))
+			{
+				return new int[]{Math.min(done, wanted), wanted};
+			}
+			if ("total".equalsIgnoreCase(mode))
+			{
+				return new int[]{Math.min(raw, wanted), wanted};
+			}
+			return new int[]{capped, needSum};
+		}
+
+		/**
+		 * Every accepted item counted, duplicates too, for noticing that one was accepted even when the tile's
+		 * progress doesn't move (e.g. a 2nd Orion on a "count" tile).
+		 */
+		Integer acceptedItems()
+		{
+			if (items == null || items.isEmpty())
+			{
+				return have;
+			}
+			int sum = 0;
+			for (TileNeed item : items)
+			{
+				sum += item != null ? itemHave(item) : 0;
+			}
+			return sum;
+		}
+
+		private static int itemNeed(TileNeed item)
+		{
+			return Math.max(item != null && item.getNeed() != null ? item.getNeed() : 1, 1);
+		}
+
+		private static int itemHave(TileNeed item)
+		{
+			return Math.max(item != null && item.getHave() != null ? item.getHave() : 0, 0);
+		}
+
+		boolean isTotal()
+		{
+			return "total".equalsIgnoreCase(mode);
+		}
+
+		/** Whether one more of this item would still help the tile: on "total" tiles duplicates count until it's done. */
+		boolean stillNeeds(TileNeed item)
+		{
+			if (isTotal())
+			{
+				return !isComplete();
+			}
+			return item.getHave() == null || item.getNeed() == null || item.getHave() < item.getNeed();
 		}
 
 		boolean isComplete()
