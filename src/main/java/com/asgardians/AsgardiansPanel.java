@@ -65,6 +65,8 @@ class AsgardiansPanel extends PluginPanel
 	static final String STAFF_RANKS = "staffRanks";
 	/** One event's details. */
 	static final String EVENT = "event";
+	/** Santa Claws, the clan's Christmas co-op raid. Its Home tile only shows while there's an event. */
+	static final String SANTA = "santa";
 
 	/** Everything the Profile page's own sections show, captured off the Swing thread. */
 	@Value
@@ -124,6 +126,24 @@ class AsgardiansPanel extends PluginPanel
 	private final JPanel pbsTab = PanelParts.column();
 	private final JPanel settingsTab = PanelParts.column();
 	private final JPanel eventTab = PanelParts.column();
+	private final JPanel santaTab = PanelParts.column();
+	/** The Santa Claws tile on Home, shown only while there's an event. */
+	private final JPanel santaRow = PanelParts.column();
+	private SantaData.Page santaPage;
+	private String santaNotConnected;
+	private String santaError;
+	private java.time.Instant santaNow = java.time.Instant.now();
+	/** Santa cards folded open; the boss starts open so its picture shows straight away. */
+	private final java.util.Set<String> santaOpen = new java.util.HashSet<>(java.util.Set.of("boss"));
+	private final java.util.Set<Long> santaDefending = new java.util.HashSet<>();
+	private final java.util.Map<Long, String> santaMessages = new java.util.HashMap<>();
+	/** Question attacks voted on: the option picked, or "" when the website said we'd already voted (elsewhere). */
+	private final java.util.Map<Long, String> santaVoted = new java.util.HashMap<>();
+	private Runnable santaRefresh = () -> { };
+	private java.util.function.LongConsumer santaDefend = id -> { };
+	private java.util.function.LongConsumer santaSkip = id -> { };
+	private java.util.function.BiConsumer<Long, String> santaVote = (id, option) -> { };
+	private SantaPictures.Images santaImages = SantaPictures.NONE;
 	/** Staff notes: the general notes page, and the notes under a clanmate's profile. Each list sits above a form
 	 * that isn't redrawn, so a note being typed survives refreshes. */
 	private final JPanel staffTab = PanelParts.column();
@@ -295,6 +315,7 @@ class AsgardiansPanel extends PluginPanel
 		pages.put(PBS, pbsTab);
 		pages.put(SETTINGS, settingsTab);
 		pages.put(EVENT, eventTab);
+		pages.put(SANTA, santaTab);
 		pages.put(STAFF, staffTab);
 		pages.put(STAFF_MOTD, staffMotdTab);
 		pages.put(STAFF_NEWS, staffNewsTab);
@@ -565,6 +586,137 @@ class AsgardiansPanel extends PluginPanel
 		membersRefresh = refresh != null ? refresh : () -> { };
 	}
 
+	/** Where the Santa Claws page gets its pictures (the plugin loads them from the clan website). */
+	void setSantaImages(SantaPictures.Images images)
+	{
+		santaImages = images != null ? images : SantaPictures.NONE;
+	}
+
+	/** How the Santa Claws page reloads, and presses Defend! as the member. */
+	void setSantaActions(Runnable refresh, java.util.function.LongConsumer defend)
+	{
+		setSantaActions(refresh, defend, null);
+	}
+
+	/** The same, plus spending a skip on an attack (moderators). Both answer through {@link #santaDefended}. */
+	void setSantaActions(Runnable refresh, java.util.function.LongConsumer defend, java.util.function.LongConsumer skip)
+	{
+		santaRefresh = refresh != null ? refresh : () -> { };
+		santaDefend = defend != null ? defend : id -> { };
+		santaSkip = skip != null ? skip : id -> { };
+	}
+
+	/** The same, plus voting on a question attack. All answer through {@link #santaDefended}. */
+	void setSantaActions(Runnable refresh, java.util.function.LongConsumer defend, java.util.function.LongConsumer skip,
+		java.util.function.BiConsumer<Long, String> vote)
+	{
+		setSantaActions(refresh, defend, skip);
+		santaVote = vote != null ? vote : (id, option) -> { };
+	}
+
+	/**
+	 * The latest Santa Claws page. {@code page} null with no error means there's no event (the Home tile hides);
+	 * {@code error} keeps the last page on show with a warning.
+	 */
+	void updateSanta(SantaData.Page page, String notConnected, String error, java.time.Instant now)
+	{
+		if (page != null || error == null)
+		{
+			santaPage = page;
+		}
+		if (page != null && page.getMyVotes() != null)
+		{
+			// The website knows about votes cast anywhere (Discord too), so the buttons lock and the bar says Voted.
+			santaVoted.putAll(page.getMyVotes());
+		}
+		santaNotConnected = notConnected;
+		santaError = error;
+		santaNow = now;
+		boolean on = santaPage != null && santaPage.getBoard() != null && santaPage.getBoard().getEvent() != null;
+		santaRow.setVisible(on);
+		updateTiles();
+		drawSanta();
+		if (SANTA.equals(page))
+		{
+			updateHeader();
+		}
+	}
+
+	/** Opens a drop category, for pictures of the page. */
+	void santaOpenForPreview(String ropeKey)
+	{
+		santaOpen.add(ropeKey);
+		drawSanta();
+	}
+
+	/** A Defend! press came back: show what it said, then reload. */
+	/** A vote went in ({@code option}), or the website said this member had already voted ({@code option} null). */
+	void santaVoted(long attackId, String option, String message)
+	{
+		santaVoted.put(attackId, option != null ? option : santaVoted.getOrDefault(attackId, ""));
+		santaDefended(attackId, message);
+	}
+
+	void santaDefended(long attackId, String message)
+	{
+		santaDefending.remove(attackId);
+		if (message != null)
+		{
+			santaMessages.put(attackId, message);
+		}
+		drawSanta();
+		santaRefresh.run();
+	}
+
+	private void drawSanta()
+	{
+		SantaTabs.Input input = new SantaTabs.Input(santaPage, santaNotConnected, santaError, santaNow, java.time.ZoneId.systemDefault(),
+			new java.util.HashSet<>(santaDefending), new java.util.HashMap<>(santaMessages), new java.util.HashMap<>(santaVoted), new java.util.HashSet<>(santaOpen), santaImages);
+		keepingScroll(santaTab, () -> SantaTabs.draw(santaTab, input, new SantaTabs.Actions()
+		{
+			@Override
+			public void defend(long attackId)
+			{
+				santaDefending.add(attackId);
+				drawSanta();
+				santaDefend.accept(attackId);
+			}
+
+			@Override
+			public void fold(String ropeKey)
+			{
+				if (!santaOpen.remove(ropeKey))
+				{
+					santaOpen.add(ropeKey);
+				}
+				drawSanta();
+			}
+
+			@Override
+			public void skip(long attackId, String attackName)
+			{
+				// A skip can't be undone, so ask first.
+				int answer = javax.swing.JOptionPane.showConfirmDialog(AsgardiansPanel.this,
+					"Spend one of the clan's skips to cancel " + attackName + "?", "Use a skip", javax.swing.JOptionPane.YES_NO_OPTION);
+				if (answer != javax.swing.JOptionPane.YES_OPTION)
+				{
+					return;
+				}
+				santaDefending.add(attackId);
+				drawSanta();
+				santaSkip.accept(attackId);
+			}
+
+			@Override
+			public void vote(long attackId, String option)
+			{
+				santaDefending.add(attackId);
+				drawSanta();
+				santaVote.accept(attackId, option);
+			}
+		}));
+	}
+
 	// ---- navigation ----
 
 	/** Opens a page, or Home. The back arrow then walks back through every page opened since Home. */
@@ -668,6 +820,9 @@ class AsgardiansPanel extends PluginPanel
 					keepingScroll(partyTab, () -> PartyTabs.draw(partyTab, lastParty, partyActions));
 				}
 				break;
+			case SANTA:
+				santaRefresh.run();
+				break;
 			default:
 		}
 	}
@@ -757,8 +912,12 @@ class AsgardiansPanel extends PluginPanel
 			case STAFF_RANKS:
 				rankUpsLoader.run();
 				break;
+			case SANTA:
+				santaRefresh.run();
+				break;
 			case HOME:
 				refreshClan.run();
+				santaRefresh.run();
 				statsActions.refresh();
 				groupActions.refresh();
 				membersRefresh.run();
@@ -851,6 +1010,12 @@ class AsgardiansPanel extends PluginPanel
 				title = "Rank ups";
 				sub = rankUps.getMembers() != null ? rankUps.getMembers().size() + " due" : "Staff tools";
 				break;
+			case SANTA:
+				SantaData.Board santaBoard = santaPage != null ? santaPage.getBoard() : null;
+				title = santaBoard != null && santaBoard.getEvent() != null && santaBoard.getEvent().getName() != null
+					? santaBoard.getEvent().getName() : "Santa Claws";
+				sub = santaBoard != null && santaBoard.getEvent() != null ? SantaTabs.clockLine(santaBoard, santaNow) : "Christmas co-op raid";
+				break;
 			default:
 				title = "Personal bests";
 				sub = "Clan records";
@@ -883,6 +1048,15 @@ class AsgardiansPanel extends PluginPanel
 		grid.setAlignmentX(LEFT_ALIGNMENT);
 		homeTab.add(grid);
 		homeTab.add(Box.createVerticalStrut(6));
+		// Santa Claws, across the width while the Christmas event is on.
+		JPanel santa = new JPanel(new java.awt.GridLayout(1, 1));
+		santa.setOpaque(false);
+		addTile(santa, SANTA, PanelChrome.Icon.SANTA, "Santa Claws");
+		santaRow.add(santa);
+		santaRow.add(Box.createVerticalStrut(6));
+		santaRow.setAlignmentX(LEFT_ALIGNMENT);
+		santaRow.setVisible(false);
+		homeTab.add(santaRow);
 		// News and PBs share the last row; staff get Staff tools across the width below them.
 		bottomRow.setOpaque(false);
 		addTile(bottomRow, NEWS, PanelChrome.Icon.NEWS, "News");
@@ -936,6 +1110,11 @@ class AsgardiansPanel extends PluginPanel
 	/** The live lines on the Home tiles, from whatever has loaded. */
 	private void updateTiles()
 	{
+		String santaLine = SantaTabs.tileLine(santaPage, santaNow);
+		if (santaLine != null)
+		{
+			tiles.get(SANTA).setLine(santaLine, SantaTabs.underAttack(santaPage) ? BAD : HIGHLIGHT);
+		}
 		boolean clan = lastInput != null && lastInput.getNotConnected() == null;
 		if (clan)
 		{

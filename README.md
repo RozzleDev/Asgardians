@@ -22,11 +22,12 @@ It records your drops, pets, collection log, deaths and personal bests for the c
 - **News:** clan announcements. Unread ones are shown when you log in.
 - **Event codeword overlay** for events that use one.
 - **Profile:** your clan rank, time in the clan, Discord, clan credit, EHB and EHP, rankings, events, PBs, collection log and pets, drops, deaths and handeggs, and whether PBs and the collection log are syncing.
+- **Santa Claws** (the clan's Christmas event): the boss line-up with HP, the clan's attacks and how to block them, voting on question attacks (one vote per member, shared with the Discord buttons), the top damage and skilling boards, and your own drops and XP for the current boss. Santa drops count from your loot automatically. With "Event messages in chat" on, you get a chat message when your drop hits the boss, and everyone gets one when a boss charges a new attack or is defeated. The codeword overlay shows the event's screenshot codeword while it's live.
 - **Bingo tracking:** kill counts, XP and finished quest speedruns are sent too, so bingo tasks like "Kill Vorkath 250 times", "Gain 5M Slayer XP" or "Gold on Dragon Slayer I" count automatically.
 
 ## Data sent
 
-The plugin sends your IP address, RSN, account hash, gameplay data (drops, pets, collection log, deaths, personal bests, kill counts, skill XP, quest speedrun times and handegg throws, with screenshots), group finder activity (the groups you start or join, your world and kill count for that content) and, with "Share my activity" on, what you're doing in game and your world, for the Members page to asgardiansclan.com, or to the server address set in the plugin's settings. This is a 3rd-party server not controlled or verified by the RuneLite developers. Gameplay data is only sent if your RSN is on the clan roster.
+The plugin sends your IP address, RSN, account hash, gameplay data (drops, pets, collection log, deaths, personal bests, kill counts, skill XP, quest speedrun times and handegg throws, with screenshots), group finder activity (the groups you start or join, your world and kill count for that content), event sign-ups and Santa Claws votes you make in the panel, during Santa Claws your skill XP totals about once a minute when they change, with "Share my activity" on what you're doing in game and your world for the Members page, and with "Share my location on the map" on your own position for clanmates' world maps (never inside instances), to asgardiansclan.com, or to the server address set in the plugin's settings. This is a 3rd-party server not controlled or verified by the RuneLite developers. Gameplay data is only sent if your RSN is on the clan roster.
 
 Private messages are hidden in screenshots.
 

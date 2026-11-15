@@ -37,7 +37,7 @@ final class PanelChrome
 	/** The orange line icons on the Home tiles. */
 	enum Icon
 	{
-		EVENTS, BINGO, GROUPS, PARTY, MEMBERS, DROPS, LEADERBOARD, PROFILE, NEWS, PBS, STAFF
+		EVENTS, BINGO, GROUPS, PARTY, MEMBERS, DROPS, LEADERBOARD, PROFILE, NEWS, PBS, STAFF, SANTA
 	}
 
 	/**
@@ -638,6 +638,15 @@ final class PanelChrome
 			case PROFILE:
 				g.drawOval(cx - 4, cy - 10, 8, 8);
 				g.drawArc(cx - 9, cy, 18, 16, 0, 180);
+				break;
+			case SANTA:
+				// A Santa hat: a red cone flopping right, a white brim and a bobble.
+				g.setColor(SantaTabs.SANTA_RED);
+				g.fillPolygon(new int[]{cx - 9, cx + 7, cx + 1}, new int[]{cy + 4, cy + 4, cy - 10}, 3);
+				g.fillPolygon(new int[]{cx - 1, cx + 3, cx + 10}, new int[]{cy - 8, cy - 6, cy - 1}, 3);
+				g.setColor(java.awt.Color.WHITE);
+				g.fillRoundRect(cx - 11, cy + 3, 21, 6, 5, 5);
+				g.fillOval(cx + 7, cy - 3, 6, 6);
 				break;
 			case PBS:
 				g.drawOval(cx - 8, cy - 7, 16, 16);

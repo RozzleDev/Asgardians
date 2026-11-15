@@ -193,7 +193,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "eventMessages",
 		name = "Event messages in chat",
-		description = "Chat messages when an event starts, 15 minutes before events you're signed up for, and when any team in your event submits, gets an item accepted or completes a tile",
+		description = "Chat messages when an event starts, 15 minutes before events you're signed up for, and when any team in your event submits, gets an item accepted or completes a tile, and for Santa Claws when your drop hits the boss, a boss charges a new attack or a boss is defeated",
 		section = eventsSection,
 		position = 1
 	)

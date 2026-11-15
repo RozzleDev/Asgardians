@@ -59,3 +59,18 @@ tasks.register('shadowJar', Jar) {
 	archiveClassifier.set('shadow')
 	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
 }
+
+// Opens the side panel on the Santa Claws page without RuneLite: sample data by default, or a (local) clan website
+// with --args="--live <api address> <rsn> <account hash>". See SantaPreview.
+tasks.register('santaPreview', JavaExec) {
+	group = 'application'
+	description = 'Opens the Santa Claws side panel page with sample or live data.'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass.set('com.asgardians.SantaPreview')
+	// e.g. -Dsanta.open=boss,attack:901 to picture those cards opened.
+	systemProperty 'santa.open', System.getProperty('santa.open', '')
+	// -Dsanta.blind=true to picture Throws Shade (the clan blinded).
+	systemProperty 'santa.blind', System.getProperty('santa.blind', 'false')
+	systemProperty 'santa.nutshot', System.getProperty('santa.nutshot', 'false')
+	systemProperty 'santa.decoy', System.getProperty('santa.decoy', 'false')
+}

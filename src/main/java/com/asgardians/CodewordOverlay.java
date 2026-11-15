@@ -31,12 +31,15 @@ class CodewordOverlay extends OverlayPanel
 
 	private final AsgardiansConfig config;
 	private final Supplier<ClanView> view;
+	/** Santa Claws' codeword while it's live, else null. */
+	private final Supplier<String> santa;
 
-	CodewordOverlay(AsgardiansPlugin plugin, AsgardiansConfig config, Supplier<ClanView> view)
+	CodewordOverlay(AsgardiansPlugin plugin, AsgardiansConfig config, Supplier<ClanView> view, Supplier<String> santa)
 	{
 		super(plugin);
 		this.config = config;
 		this.view = view;
+		this.santa = santa;
 		setPosition(OverlayPosition.TOP_LEFT);
 	}
 
@@ -55,6 +58,15 @@ class CodewordOverlay extends OverlayPanel
 			return simple(graphics, current);
 		}
 		boolean any = false;
+		String santaWord = santa.get();
+		if (santaWord != null)
+		{
+			panelComponent.getChildren().add(TitleComponent.builder().text("Asgardians").color(PanelParts.HIGHLIGHT).build());
+			any = true;
+			panelComponent.getChildren().add(LineComponent.builder().left("Santa Claws").build());
+			panelComponent.getChildren().add(LineComponent.builder().left("Codeword:").right(santaWord)
+				.rightColor(PanelParts.HIGHLIGHT).build());
+		}
 		for (ClanView.EventView live : current.live())
 		{
 			ClanData.Event event = live.getEvent();
@@ -98,6 +110,11 @@ class CodewordOverlay extends OverlayPanel
 	private Dimension simple(Graphics2D graphics, ClanView current)
 	{
 		java.util.List<String> words = codewords(current);
+		String santaWord = santa.get();
+		if (santaWord != null)
+		{
+			words.add(0, santaWord);
+		}
 		if (words.isEmpty())
 		{
 			return null;

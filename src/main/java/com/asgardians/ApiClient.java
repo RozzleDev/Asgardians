@@ -316,6 +316,32 @@ class ApiClient
 			.delete().build(), ClanData.SignupResult.class, done);
 	}
 
+	/** Downloads a picture (null when it can't be had). Reports back on OkHttp's thread. */
+	void image(HttpUrl url, Consumer<java.awt.image.BufferedImage> done)
+	{
+		http.newCall(new Request.Builder().url(url).get().build()).enqueue(new Callback()
+		{
+			@Override
+			public void onFailure(Call call, IOException e)
+			{
+				done.accept(null);
+			}
+
+			@Override
+			public void onResponse(Call call, Response response)
+			{
+				try (ResponseBody body = response.body())
+				{
+					done.accept(response.isSuccessful() && body != null ? javax.imageio.ImageIO.read(body.byteStream()) : null);
+				}
+				catch (IOException e)
+				{
+					done.accept(null);
+				}
+			}
+		});
+	}
+
 	/** DELETEs and reads the reply as {@code type}. */
 	<T> void delete(HttpUrl url, String installKey, Class<T> type, Consumer<GetResult<T>> done)
 	{
@@ -442,6 +468,20 @@ class ApiClient
 			if (json != null && json.has("error"))
 			{
 				return json.get("error").getAsString();
+			}
+			// A problem reply ({type, title, status, detail, traceId}) runs past the cut below, which would leave
+			// half a JSON object on screen: keep just the part people should read, as JSON so callers can still parse it.
+			if (json != null && (json.has("detail") || json.has("title")))
+			{
+				JsonObject problem = new JsonObject();
+				for (String field : new String[]{"title", "detail", "status"})
+				{
+					if (json.has(field) && !json.get(field).isJsonNull())
+					{
+						problem.add(field, json.get(field));
+					}
+				}
+				return problem.toString();
 			}
 		}
 		catch (JsonParseException | IllegalStateException ignored)

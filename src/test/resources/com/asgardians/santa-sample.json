@@ -1,0 +1,753 @@
+{
+ "board": {
+  "event": {
+   "id": 1,
+   "name": "Santa Claws",
+   "startsAt": "2026-01-11T18:00:00Z",
+   "endsAt": "2026-12-20T18:00:00Z",
+   "isActive": true,
+   "completedAt": null,
+   "status": "live"
+  },
+  "now": "2026-11-13T23:32:02.8951702Z",
+  "activeIndex": 0,
+  "complete": false,
+  "encounters": [
+   {
+    "id": 1,
+    "sortOrder": 1,
+    "actLabel": "ACT I",
+    "status": "active",
+    "revealed": true,
+    "name": "Frosty the Roadman and his Robbin's",
+    "shortName": "Frosty",
+    "blurb": "You've stumbled into the wrong hood... Robbin' Hood. Now Frosty and his gang of Robbin's stand in your way.",
+    "imageUrl": "/img/santa-claws/frosty.webp",
+    "art": {
+     "aspect": "1312/1199",
+     "x": 28.35,
+     "y": 7.17,
+     "w": 44.05,
+     "h": 3.42,
+     "hitX": 50,
+     "hitY": 55,
+     "stages": [
+      "/img/santa-claws/frosty-down-1.webp",
+      "/img/santa-claws/frosty-down-2.webp",
+      "/img/santa-claws/frosty-down-3.webp"
+     ],
+     "defeated": "/img/santa-claws/frosty-beaten.webp"
+    },
+    "swears": false,
+    "units": [
+     {
+      "key": "robbin-1",
+      "name": "Robbin",
+      "hp": 0,
+      "maxHp": 120,
+      "isDecoy": false,
+      "image": null,
+      "swears": false,
+      "x": 81,
+      "y": 50
+     },
+     {
+      "key": "robbin-2",
+      "name": "Robbin",
+      "hp": 64,
+      "maxHp": 120,
+      "isDecoy": false,
+      "image": null,
+      "swears": false,
+      "x": 25,
+      "y": 55
+     },
+     {
+      "key": "robbin-3",
+      "name": "Robbin",
+      "hp": 120,
+      "maxHp": 120,
+      "isDecoy": false,
+      "image": null,
+      "swears": false,
+      "x": 20,
+      "y": 21
+     },
+     {
+      "key": "boss",
+      "name": "Frosty",
+      "hp": 412,
+      "maxHp": 600,
+      "isDecoy": false,
+      "image": null,
+      "swears": false,
+      "x": null,
+      "y": null
+     }
+    ],
+    "bonus": {
+     "skill": "Firemaking",
+     "name": "Roasted",
+     "description": "Light him up: gain 1m clan Firemaking XP and every drop does double damage.",
+     "target": 1000000,
+     "multiplier": 2,
+     "progress": 640000,
+     "unlocked": false,
+     "frozen": false,
+     "active": false
+    },
+    "defenceSkill": "Thieving",
+    "attacks": [
+     {
+      "key": "coal",
+      "name": "Snowball Drive-by",
+      "description": "Coal-packed snowballs: the clan's next 3 drops deal half damage.",
+      "effectType": "drop-mod",
+      "defence": {
+       "kind": "drops",
+       "amount": 3,
+       "skill": null,
+       "items": null
+      },
+      "line": "Pull up, Robbin's. Snowballs. Coal in every one, no cap."
+     },
+     {
+      "key": "heal",
+      "name": "Re-up on Ice",
+      "description": "He tops himself up with fresh snow: heals 150 HP.",
+      "effectType": "heal",
+      "defence": {
+       "kind": "xp",
+       "amount": 250000,
+       "skill": "Thieving",
+       "items": null
+      },
+      "line": "Ahhh... 100% Pure Colombian Snow."
+     },
+     {
+      "key": "frost",
+      "name": "Frozen Assets",
+      "description": "Frozen solid: Roasted is off for 4 hours.",
+      "effectType": "bonus-off",
+      "defence": {
+       "kind": "kc",
+       "amount": 50,
+       "skill": "wintertodt",
+       "items": null
+      },
+      "line": "Freeze! Them assets are mine now, innit."
+     }
+    ],
+    "minionAttack": {
+     "key": "steal",
+     "name": "Daylight Robbin'",
+     "description": "Each Robbin still standing steals a die from the clan's next drop.",
+     "effectType": "minion-steal",
+     "defence": {
+      "kind": "items",
+      "amount": 5,
+      "skill": null,
+      "items": [
+       "Phoenix",
+       "Tome of fire (empty)",
+       "Dragon axe",
+       "Warm gloves",
+       "Bruma torch",
+       "Pyromancer hood",
+       "Pyromancer garb",
+       "Pyromancer robe",
+       "Pyromancer boots"
+      ]
+     },
+     "line": "Robbin's, it's Daylight Robbin' time. Cop their dice!"
+    },
+    "ropeKeys": [
+     "fractured-archive",
+     "mid-lvl-bosses-ii",
+     "end-game-bosses",
+     "clue-beginner"
+    ],
+    "prizeText": "a Christmas movie night",
+    "effects": {
+     "dropMods": [
+      {
+       "sourceId": 880,
+       "attackName": "Snowball Drive-by",
+       "mode": "half",
+       "amount": 0,
+       "remaining": 2
+      }
+     ],
+     "minionHit": null,
+     "curses": [],
+     "hasteRemaining": 0,
+     "hasteFactor": 1,
+     "blind": false
+    },
+    "pendingAttack": {
+     "id": 901,
+     "key": "heal",
+     "name": "Re-up on Ice",
+     "description": "He tops himself up with fresh snow: heals 150 HP.",
+     "effectType": "heal",
+     "minion": false,
+     "startedAt": "2026-11-13T23:32:02.8951702Z",
+     "defendBy": "2026-11-14T01:09:02.895Z",
+     "defence": {
+      "kind": "rally",
+      "amount": 25,
+      "skill": null,
+      "items": null
+     },
+     "progress": 9,
+     "defended": false,
+     "line": "Ahhh... 100% Pure Colombian Snow."
+    },
+    "pendingMinionAttack": {
+     "id": 902,
+     "key": "steal",
+     "name": "Daylight Robbin'",
+     "description": "Each Robbin still standing steals a die from the clan's next drop.",
+     "effectType": "minion-steal",
+     "minion": true,
+     "startedAt": "2026-11-13T23:32:02.8951702Z",
+     "defendBy": "2026-11-14T00:13:02.895Z",
+     "defence": {
+      "kind": "xp",
+      "amount": 100000,
+      "skill": "Thieving",
+      "items": null
+     },
+     "progress": 62500,
+     "defended": false,
+     "line": "Robbin's, it's Daylight Robbin' time. Cop their dice!"
+    },
+    "nextAttackAt": "2026-01-11T19:00:00Z",
+    "nextMinionAttackAt": "2026-01-11T18:30:00Z",
+    "startedAt": "2026-01-11T18:00:00Z",
+    "defeatedAt": null,
+    "topDamage": [],
+    "hitLines": [
+     "Oi, you're mugging me off, bruv!",
+     "Chill out, you melt!",
+     "That's cold, fam. Ice cold."
+    ]
+   },
+   {
+    "id": 2,
+    "sortOrder": 2,
+    "actLabel": "ACT II",
+    "status": "locked",
+    "revealed": false,
+    "name": null,
+    "shortName": null,
+    "blurb": null,
+    "imageUrl": null,
+    "art": null,
+    "swears": false,
+    "units": [],
+    "bonus": null,
+    "defenceSkill": null,
+    "attacks": [],
+    "minionAttack": null,
+    "ropeKeys": [],
+    "prizeText": null,
+    "effects": null,
+    "pendingAttack": null,
+    "pendingMinionAttack": null,
+    "nextAttackAt": null,
+    "nextMinionAttackAt": null,
+    "startedAt": null,
+    "defeatedAt": null,
+    "topDamage": [],
+    "hitLines": []
+   },
+   {
+    "id": 5,
+    "sortOrder": 3,
+    "actLabel": "ACT III",
+    "status": "locked",
+    "revealed": false,
+    "name": null,
+    "shortName": null,
+    "blurb": null,
+    "imageUrl": null,
+    "art": null,
+    "swears": false,
+    "units": [],
+    "bonus": null,
+    "defenceSkill": null,
+    "attacks": [],
+    "minionAttack": null,
+    "ropeKeys": [],
+    "prizeText": null,
+    "effects": null,
+    "pendingAttack": null,
+    "pendingMinionAttack": null,
+    "nextAttackAt": null,
+    "nextMinionAttackAt": null,
+    "startedAt": null,
+    "defeatedAt": null,
+    "topDamage": [],
+    "hitLines": []
+   },
+   {
+    "id": 4,
+    "sortOrder": 4,
+    "actLabel": "ACT IV",
+    "status": "locked",
+    "revealed": false,
+    "name": null,
+    "shortName": null,
+    "blurb": null,
+    "imageUrl": null,
+    "art": null,
+    "swears": false,
+    "units": [],
+    "bonus": null,
+    "defenceSkill": null,
+    "attacks": [],
+    "minionAttack": null,
+    "ropeKeys": [],
+    "prizeText": null,
+    "effects": null,
+    "pendingAttack": null,
+    "pendingMinionAttack": null,
+    "nextAttackAt": null,
+    "nextMinionAttackAt": null,
+    "startedAt": null,
+    "defeatedAt": null,
+    "topDamage": [],
+    "hitLines": []
+   },
+   {
+    "id": 3,
+    "sortOrder": 5,
+    "actLabel": "ACT V",
+    "status": "locked",
+    "revealed": false,
+    "name": null,
+    "shortName": null,
+    "blurb": null,
+    "imageUrl": null,
+    "art": null,
+    "swears": false,
+    "units": [],
+    "bonus": null,
+    "defenceSkill": null,
+    "attacks": [],
+    "minionAttack": null,
+    "ropeKeys": [],
+    "prizeText": null,
+    "effects": null,
+    "pendingAttack": null,
+    "pendingMinionAttack": null,
+    "nextAttackAt": null,
+    "nextMinionAttackAt": null,
+    "startedAt": null,
+    "defeatedAt": null,
+    "topDamage": [],
+    "hitLines": []
+   },
+   {
+    "id": 6,
+    "sortOrder": 6,
+    "actLabel": "FINALE",
+    "status": "locked",
+    "revealed": false,
+    "name": null,
+    "shortName": null,
+    "blurb": null,
+    "imageUrl": null,
+    "art": null,
+    "swears": false,
+    "units": [],
+    "bonus": null,
+    "defenceSkill": null,
+    "attacks": [],
+    "minionAttack": null,
+    "ropeKeys": [],
+    "prizeText": null,
+    "effects": null,
+    "pendingAttack": null,
+    "pendingMinionAttack": null,
+    "nextAttackAt": null,
+    "nextMinionAttackAt": null,
+    "startedAt": null,
+    "defeatedAt": null,
+    "topDamage": [],
+    "hitLines": []
+   }
+  ],
+  "topDamage": [
+   {
+    "rsn": "Sif Hair",
+    "damage": 612
+   },
+   {
+    "rsn": "Frigg Rune",
+    "damage": 540
+   },
+   {
+    "rsn": "Mod Mike",
+    "damage": 388
+   },
+   {
+    "rsn": "Tyr Hand",
+    "damage": 251
+   },
+   {
+    "rsn": "Clo",
+    "damage": 190
+   }
+  ],
+  "recent": [],
+  "pendingSubmissions": 0,
+  "skipsLeft": 2,
+  "skipsEarned": 0
+ },
+ "drops": [
+  {
+   "ropeKey": "fractured-archive",
+   "name": "The Fractured Archive",
+   "kind": "raid",
+   "drops": [
+    {
+     "itemName": "Orion",
+     "dice": 5,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Obligator (uncharged)",
+     "dice": 5,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Fragment of living earth",
+     "dice": 4,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Fragment of deep water",
+     "dice": 4,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Fragment of whispering wind",
+     "dice": 4,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Fragment of burning fire",
+     "dice": 4,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Horn of Bran",
+     "dice": 4,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Ascension crossbows",
+     "dice": 4,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Zorya's tome (uncharged)",
+     "dice": 4,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Rondache",
+     "dice": 3,
+     "boss": "The Fractured Archive"
+    },
+    {
+     "itemName": "Archivist's folio (inert)",
+     "dice": 3,
+     "boss": "The Fractured Archive"
+    }
+   ]
+  },
+  {
+   "ropeKey": "mid-lvl-bosses-ii",
+   "name": "Mid-lvl Bosses II",
+   "kind": "group",
+   "drops": [
+    {
+     "itemName": "Kalphite Princess",
+     "dice": 5,
+     "boss": "Kalphite Queen"
+    },
+    {
+     "itemName": "Jar of Sand",
+     "dice": 5,
+     "boss": "Kalphite Queen"
+    },
+    {
+     "itemName": "Uncut onyx",
+     "dice": 5,
+     "boss": "Zalcano"
+    },
+    {
+     "itemName": "Smolcano",
+     "dice": 5,
+     "boss": "Zalcano"
+    },
+    {
+     "itemName": "Bran",
+     "dice": 5,
+     "boss": "Royal Titans"
+    },
+    {
+     "itemName": "Zalcano shard",
+     "dice": 4,
+     "boss": "Zalcano"
+    },
+    {
+     "itemName": "Dragon 2h sword",
+     "dice": 3,
+     "boss": "Kalphite Queen"
+    },
+    {
+     "itemName": "Dragon pickaxe",
+     "dice": 3,
+     "boss": "Kalphite Queen"
+    },
+    {
+     "itemName": "Huberte",
+     "dice": 3,
+     "boss": "Hueycoatl"
+    },
+    {
+     "itemName": "Crystal tool seed",
+     "dice": 3,
+     "boss": "Zalcano"
+    },
+    {
+     "itemName": "Dragon chainbody",
+     "dice": 2,
+     "boss": "Kalphite Queen"
+    },
+    {
+     "itemName": "Kq head",
+     "dice": 2,
+     "boss": "Kalphite Queen"
+    },
+    {
+     "itemName": "Tome of Earth (empty)",
+     "dice": 2,
+     "boss": "Hueycoatl"
+    },
+    {
+     "itemName": "Dragon hunter wand",
+     "dice": 2,
+     "boss": "Hueycoatl"
+    },
+    {
+     "itemName": "Deadeye prayer scroll",
+     "dice": 1,
+     "boss": "Royal Titans"
+    },
+    {
+     "itemName": "Mystic vigour prayer scroll",
+     "dice": 1,
+     "boss": "Royal Titans"
+    },
+    {
+     "itemName": "Ice element staff crown",
+     "dice": 1,
+     "boss": "Royal Titans"
+    },
+    {
+     "itemName": "Fire element staff crown",
+     "dice": 1,
+     "boss": "Royal Titans"
+    }
+   ]
+  },
+  {
+   "ropeKey": "end-game-bosses",
+   "name": "Endgame Bosses I",
+   "kind": "solo",
+   "drops": [
+    {
+     "itemName": "Smol Heredit",
+     "dice": 5,
+     "boss": "Fortis Colosseum"
+    },
+    {
+     "itemName": "Maggot marquess",
+     "dice": 5,
+     "boss": "Maggot King"
+    },
+    {
+     "itemName": "Avernic treads",
+     "dice": 5,
+     "boss": "Doom"
+    },
+    {
+     "itemName": "Eye of ayak (uncharged)",
+     "dice": 5,
+     "boss": "Doom"
+    },
+    {
+     "itemName": "Mokhaiotl cloth",
+     "dice": 5,
+     "boss": "Doom"
+    },
+    {
+     "itemName": "Tonalztics of Ralos (uncharged)",
+     "dice": 4,
+     "boss": "Fortis Colosseum"
+    },
+    {
+     "itemName": "Dom",
+     "dice": 4,
+     "boss": "Doom"
+    },
+    {
+     "itemName": "Dizana's quiver (uncharged)",
+     "dice": 4,
+     "boss": "Fortis Colosseum"
+    },
+    {
+     "itemName": "Uncut onyx",
+     "dice": 3,
+     "boss": "Fortis Colosseum"
+    },
+    {
+     "itemName": "Sunfire fanatic helm",
+     "dice": 3,
+     "boss": "Fortis Colosseum"
+    },
+    {
+     "itemName": "Sunfire fanatic cuirass",
+     "dice": 3,
+     "boss": "Fortis Colosseum"
+    },
+    {
+     "itemName": "Sunfire fanatic chausses",
+     "dice": 3,
+     "boss": "Fortis Colosseum"
+    },
+    {
+     "itemName": "Crimson kisten",
+     "dice": 3,
+     "boss": "Maggot King"
+    },
+    {
+     "itemName": "Elder venator fang",
+     "dice": 3,
+     "boss": "Maggot King"
+    },
+    {
+     "itemName": "Echo crystal",
+     "dice": 2,
+     "boss": "Fortis Colosseum"
+    }
+   ]
+  },
+  {
+   "ropeKey": "clue-beginner",
+   "name": "Beginner clues",
+   "kind": "clue",
+   "drops": [
+    {
+     "itemName": "Mole slippers",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Frog slippers",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Bear feet",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Demon feet",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Jester cape",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Shoulder parrot",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Monk's robe top (t)",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Monk's robe (t)",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Amulet of defence (t)",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Sandwich lady hat",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Sandwich lady top",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Sandwich lady bottom",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Rune scimitar ornament kit (Guthix)",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Rune scimitar ornament kit (Saradomin)",
+     "dice": 1,
+     "boss": null
+    },
+    {
+     "itemName": "Rune scimitar ornament kit (Zamorak)",
+     "dice": 1,
+     "boss": null
+    }
+   ]
+  }
+ ],
+ "me": {
+  "rsn": "Frigg Rune",
+  "damage": 540,
+  "rank": 2,
+  "canSkip": true
+ },
+ "skillers": {
+  "top": [
+   {"rsn": "Asgard Odin", "xp": 412300},
+   {"rsn": "Bifrost Bob", "xp": 288150},
+   {"rsn": "Frigg Rune", "xp": 196400},
+   {"rsn": "Loki Lad", "xp": 150020},
+   {"rsn": "Mod Mike", "xp": 98000}
+  ],
+  "skills": ["Firemaking", "Thieving"],
+  "updatedAt": "2026-12-01T18:00:00Z",
+  "myXp": 196400,
+  "myRank": 3
+ }
+}

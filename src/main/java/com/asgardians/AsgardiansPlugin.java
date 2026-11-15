@@ -406,7 +406,7 @@ public class AsgardiansPlugin extends Plugin
 			}
 			badgesReserved = true;
 		}
-		codewordOverlay = new CodewordOverlay(this, config, () -> clanView);
+		codewordOverlay = new CodewordOverlay(this, config, () -> clanView, this::santaCodeword);
 		overlayManager.add(codewordOverlay);
 		wsClient.registerMessage(AsgReadyCheck.class);
 		wsClient.registerMessage(AsgReadyAnswer.class);
@@ -583,6 +583,22 @@ public class AsgardiansPlugin extends Plugin
 				answerReadyCheck(ready);
 			}
 		});
+		panel.setSantaActions(() -> executor.execute(this::fetchSanta), id -> executor.execute(() -> santaDefend(id)),
+			id -> executor.execute(() -> santaSkip(id)), (id, option) -> executor.execute(() -> santaVote(id, option)));
+		panel.setSantaImages(new SantaPictures.Images()
+		{
+			@Override
+			public void picture(String path, java.util.function.Consumer<java.awt.image.BufferedImage> done)
+			{
+				santaPicture(path, done);
+			}
+
+			@Override
+			public void item(SantaData.Drop drop, java.util.function.Consumer<java.awt.image.BufferedImage> done)
+			{
+				// In game every drop has its own item icon (PanelParts.itemNamed), so this isn't needed.
+			}
+		});
 		panel.setStaffActions(rsn -> executor.execute(() -> staffNotes(rsn, null, null)), new StaffTabs.Actions()
 		{
 			@Override
@@ -715,6 +731,8 @@ public class AsgardiansPlugin extends Plugin
 			xpSentTick = -1;
 			xpSentTotal = -1;
 			lastXp.clear();
+			santaXp.clear();
+			santaXpDirty = false;
 			myActivity = null;
 			loginNewsPending = true;
 			executor.execute(this::flush);
@@ -980,6 +998,15 @@ public class AsgardiansPlugin extends Plugin
 			fetchStats();
 		}
 		fetchEggs();
+		// Santa Claws: every tick while its page is open (attacks have countdowns), otherwise every few minutes for the tile.
+		if ((shown != null && AsgardiansPanel.SANTA.equals(shown.page())) || now - lastSantaFetch >= SANTA_IDLE_MILLIS)
+		{
+			fetchSanta();
+		}
+		if (santaLive && santaXpDirty && now - lastSantaXpSent >= SANTA_XP_MILLIS)
+		{
+			sendSantaXp();
+		}
 		if ((shown != null && shown.membersShown()) || now - lastActivityFetch >= ACTIVITY_IDLE_MILLIS)
 		{
 			fetchMemberActivity();
@@ -2575,6 +2602,22 @@ public class AsgardiansPlugin extends Plugin
 	private static final long ACTIVITY_RETRY_MILLIS = 30 * 60_000;
 	/** Load clanmates' activities this often while the Members page is closed. */
 	private static final long ACTIVITY_IDLE_MILLIS = 120_000;
+	/** How often the Santa Claws tile reloads while its page isn't open. */
+	private static final long SANTA_IDLE_MILLIS = 300_000;
+	/** How soon after a loot drop the Santa Claws page is fetched again (the drop is sent within a few seconds). */
+	private static final long SANTA_AFTER_DROP_MILLIS = 20_000;
+	private volatile long lastSantaFetch;
+	private final AtomicBoolean fetchingSanta = new AtomicBoolean();
+	/** How often skill totals go to the Santa Claws skilling board while they change. */
+	private static final long SANTA_XP_MILLIS = 60_000;
+	/** The member's skill totals (skill name to XP), from the game's stat events. */
+	private final Map<String, Long> santaXp = new java.util.concurrent.ConcurrentHashMap<>();
+	/** Totals changed (or a new boss came up) since they were last sent. */
+	private volatile boolean santaXpDirty;
+	private volatile long lastSantaXpSent;
+	/** Whether Santa Claws is live, and which boss is up, from the last load. */
+	private volatile boolean santaLive;
+	private volatile int santaBossId = -1;
 	private String activityTarget;
 	private int activityTargetTick = -1;
 	private String activitySkill;
@@ -2598,6 +2641,11 @@ public class AsgardiansPlugin extends Plugin
 	@Subscribe
 	public void onStatChanged(StatChanged event)
 	{
+		Long had = santaXp.put(event.getSkill().getName(), (long) event.getXp());
+		if (had == null || had != event.getXp())
+		{
+			santaXpDirty = true;
+		}
 		Integer before = lastXp.put(event.getSkill(), event.getXp());
 		if (before != null && event.getXp() > before && event.getSkill() == Skill.SLAYER)
 		{
@@ -2732,6 +2780,275 @@ public class AsgardiansPlugin extends Plugin
 	}
 
 	/** Loads what clanmates are doing. Executor thread. */
+	/**
+	 * Loads the Santa Claws page (the board, the drops that hurt the current boss, and the member's damage). No event
+	 * hides the Home tile. Executor thread.
+	 */
+	private void fetchSanta()
+	{
+		AsgardiansPanel target = panel;
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (target == null)
+		{
+			return;
+		}
+		if (key == null)
+		{
+			java.time.Instant now = java.time.Instant.now();
+			SwingUtilities.invokeLater(() -> target.updateSanta(null, "Log in with your clan account to see Santa Claws.", null, now));
+			return;
+		}
+		if (!fetchingSanta.compareAndSet(false, true))
+		{
+			return;
+		}
+		lastSantaFetch = System.currentTimeMillis();
+		api.get(ApiClient.endpoint(address, "santa-claws"), key, SantaData.Page.class, result ->
+		{
+			fetchingSanta.set(false);
+			java.time.Instant now = java.time.Instant.now();
+			if (result.getStatus() == 204 || result.getStatus() == 404)
+			{
+				santaLive = false;
+				SwingUtilities.invokeLater(() -> target.updateSanta(null, null, null, now));
+			}
+			else if (result.ok())
+			{
+				noteSantaBoss(result.getBody());
+				announceSanta(result.getBody());
+				SwingUtilities.invokeLater(() -> target.updateSanta(result.getBody(), null, null, now));
+			}
+			else
+			{
+				String error = result.getStatus() == 0 ? "Can't reach the clan website." : "Santa Claws didn't load (" + result.getStatus() + ").";
+				SwingUtilities.invokeLater(() -> target.updateSanta(null, null, error, now));
+			}
+		});
+	}
+
+	/** The newest Santa Claws entry already turned into chat messages; -1 until the first page sets the starting point. */
+	private volatile long santaSeenId = -1;
+	/** The Santa Claws codeword while the event is live (the codeword overlay shows it), else null. */
+	private volatile String santaCodeword;
+
+	/**
+	 * Chat messages for what's new on the board, with "Event messages" on: the member's own drops hitting the boss,
+	 * and for everyone a boss falling or charging a new attack. The first page only sets the starting point.
+	 */
+	private void announceSanta(SantaData.Page page)
+	{
+		SantaData.Board board = page != null ? page.getBoard() : null;
+		boolean live = board != null && board.getEvent() != null && board.getEvent().isLive();
+		santaCodeword = live && board.getCodeword() != null && !board.getCodeword().trim().isEmpty() ? board.getCodeword().trim() : null;
+		if (!live)
+		{
+			return;
+		}
+		String me = page.getMe() != null ? page.getMe().getRsn() : null;
+		List<String> lines = config.eventMessages() ? SantaMessages.lines(board, santaSeenId, me) : java.util.Collections.emptyList();
+		santaSeenId = SantaMessages.newest(board, Math.max(santaSeenId, 0));
+		if (!lines.isEmpty())
+		{
+			clientThread.invokeLater(() ->
+			{
+				if (client.getGameState() == GameState.LOGGED_IN)
+				{
+					// A handful at most, so a quiet spell then a busy minute doesn't flood chat.
+					lines.stream().skip(Math.max(0, lines.size() - 5)).forEach(this::chat);
+				}
+			});
+		}
+	}
+
+	/** The Santa Claws codeword while the event is live, for the codeword overlay. */
+	String santaCodeword()
+	{
+		return santaCodeword;
+	}
+
+	/** Whether Santa Claws is live and which boss is up; a new boss sends the totals straight away, as its starting point. */
+	private void noteSantaBoss(SantaData.Page page)
+	{
+		SantaData.Board board = page != null ? page.getBoard() : null;
+		boolean live = board != null && board.getEvent() != null && board.getEvent().isLive();
+		SantaData.Encounter boss = live ? board.active() : null;
+		int id = boss != null ? boss.getId() : -1;
+		if (live && id != santaBossId)
+		{
+			santaXpDirty = true;
+			lastSantaXpSent = 0;
+		}
+		santaBossId = id;
+		santaLive = live;
+	}
+
+	/**
+	 * Sends the member's skill totals for the Santa Claws skilling board (the website keeps the current boss's skills
+	 * and counts from the first total it sees during that boss). Executor thread.
+	 */
+	private void sendSantaXp()
+	{
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		// Like every other send: only with "Share my data" on, in the clan, on a normal world (never Leagues, Deadman or beta XP).
+		if (key == null || !sharing || santaXp.isEmpty())
+		{
+			return;
+		}
+		santaXpDirty = false;
+		lastSantaXpSent = System.currentTimeMillis();
+		com.google.gson.JsonObject skills = new com.google.gson.JsonObject();
+		santaXp.forEach(skills::addProperty);
+		com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+		body.add("skills", skills);
+		api.post(ApiClient.endpoint(address, "santa-claws/xp"), key, body, com.google.gson.JsonObject.class, result ->
+		{
+			if (!result.ok())
+			{
+				// Try again next time round.
+				santaXpDirty = true;
+			}
+		});
+	}
+
+	/** Santa Claws artwork, by website path, kept once loaded (a few dozen KB each, about 20 in all). */
+	private final Map<String, java.awt.image.BufferedImage> santaPictures = new java.util.concurrent.ConcurrentHashMap<>();
+	/** Pictures on their way, with whoever is waiting for each. Swing thread. */
+	private final Map<String, List<java.util.function.Consumer<java.awt.image.BufferedImage>>> santaPictureWaits = new java.util.HashMap<>();
+
+	/** A Santa Claws picture from the clan website: straight away when loaded before, otherwise once it arrives. Swing thread. */
+	private void santaPicture(String path, java.util.function.Consumer<java.awt.image.BufferedImage> done)
+	{
+		java.awt.image.BufferedImage have = santaPictures.get(path);
+		if (have != null)
+		{
+			done.accept(have);
+			return;
+		}
+		List<java.util.function.Consumer<java.awt.image.BufferedImage>> waiting = santaPictureWaits.get(path);
+		if (waiting != null)
+		{
+			waiting.add(done);
+			return;
+		}
+		waiting = new ArrayList<>();
+		waiting.add(done);
+		santaPictureWaits.put(path, waiting);
+		okhttp3.HttpUrl base = okhttp3.HttpUrl.parse(apiAddress());
+		okhttp3.HttpUrl url = base != null ? base.resolve(path) : null;
+		if (url == null)
+		{
+			santaPictureWaits.remove(path);
+			return;
+		}
+		api.image(url, img -> SwingUtilities.invokeLater(() ->
+		{
+			List<java.util.function.Consumer<java.awt.image.BufferedImage>> waiters = santaPictureWaits.remove(path);
+			if (img == null || waiters == null)
+			{
+				return;
+			}
+			santaPictures.put(path, img);
+			waiters.forEach(w -> w.accept(img));
+		}));
+	}
+
+	/** Presses Defend! on a Santa Claws attack as the logged-in member. Executor thread. */
+	private void santaDefend(long attackId)
+	{
+		AsgardiansPanel target = panel;
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (target == null)
+		{
+			return;
+		}
+		if (key == null)
+		{
+			SwingUtilities.invokeLater(() -> target.santaDefended(attackId, "Log in with your clan account to defend."));
+			return;
+		}
+		api.post(ApiClient.endpoint(address, "santa-claws/attacks/" + attackId + "/defend"), key, new com.google.gson.JsonObject(), SantaData.Rally.class,
+			result ->
+			{
+				String message;
+				if (result.ok())
+				{
+					SantaData.Rally r = result.getBody();
+					message = r.isBlocked() ? "Blocked! You made it " + r.getRallied() + " / " + r.getTarget() + "."
+						: "You're defending! " + r.getRallied() + " / " + r.getTarget() + " so far. Get your clanmates in!";
+				}
+				else
+				{
+					message = result.getStatus() == 0 ? "Can't reach the clan website." : SantaTabs.problemText(gson, result.getError());
+				}
+				SwingUtilities.invokeLater(() -> target.santaDefended(attackId, message));
+			});
+	}
+
+	/** Votes for one of a Santa Claws question attack's options as the logged-in member (once each). Executor thread. */
+	private void santaVote(long attackId, String option)
+	{
+		AsgardiansPanel target = panel;
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (target == null)
+		{
+			return;
+		}
+		if (key == null)
+		{
+			SwingUtilities.invokeLater(() -> target.santaDefended(attackId, "Log in with your clan account to vote."));
+			return;
+		}
+		com.google.gson.JsonObject body = new com.google.gson.JsonObject();
+		body.addProperty("option", option);
+		api.post(ApiClient.endpoint(address, "santa-claws/attacks/" + attackId + "/vote"), key, body, com.google.gson.JsonObject.class,
+			result ->
+			{
+				if (result.ok() || result.getStatus() == 409)
+				{
+					// 409: already voted (maybe on Discord); either way this member's vote is in, so lock the buttons.
+					String message = result.ok() ? "You voted " + option + ". The most-voted answer when time's up decides it."
+						: SantaTabs.problemText(gson, result.getError());
+					SwingUtilities.invokeLater(() -> target.santaVoted(attackId, result.ok() ? option : null, message));
+					return;
+				}
+				String message = result.getStatus() == 0 ? "Can't reach the clan website." : SantaTabs.problemText(gson, result.getError());
+				SwingUtilities.invokeLater(() -> target.santaDefended(attackId, message));
+			});
+	}
+
+	/** Spends one of the clan's skips on a Santa Claws attack (the website checks Moderator rank). Executor thread. */
+	private void santaSkip(long attackId)
+	{
+		AsgardiansPanel target = panel;
+		ApiClient.AccountInfo who = account;
+		String address = apiAddress();
+		String key = who != null ? installKey(address, who) : null;
+		if (target == null)
+		{
+			return;
+		}
+		if (key == null)
+		{
+			SwingUtilities.invokeLater(() -> target.santaDefended(attackId, "Log in with your clan account to use a skip."));
+			return;
+		}
+		api.post(ApiClient.endpoint(address, "santa-claws/attacks/" + attackId + "/skip"), key, new com.google.gson.JsonObject(),
+			com.google.gson.JsonObject.class, result ->
+			{
+				String message = result.ok() ? "Skipped! That attack is cancelled."
+					: result.getStatus() == 0 ? "Can't reach the clan website." : SantaTabs.problemText(gson, result.getError());
+				SwingUtilities.invokeLater(() -> target.santaDefended(attackId, message));
+			});
+	}
+
 	private void fetchMemberActivity()
 	{
 		ApiClient.AccountInfo who = account;
@@ -3712,6 +4029,11 @@ public class AsgardiansPlugin extends Plugin
 
 	private void submit(Record record, boolean wantsScreenshot)
 	{
+		if (santaLive && record.getType() == Record.Type.loot)
+		{
+			// The drop may count for Santa Claws: look again shortly, so "your drop hit…" comes quickly.
+			executor.schedule(this::fetchSanta, SANTA_AFTER_DROP_MILLIS, TimeUnit.MILLISECONDS);
+		}
 		boolean screenshot = wantsScreenshot && config.uploadScreenshots();
 		record.setScreenshot(screenshot);
 		record.awaitingScreenshot = screenshot;
