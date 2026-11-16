@@ -64,7 +64,8 @@ final class SettingsTabs
 			new Setting("shareLocation", "Share my location on the map", true),
 			new Setting("shareDeaths", "Share my deaths", true),
 			new Setting("uploadScreenshots", "Upload screenshots", true),
-			new Setting("saveScreenshots", "Save screenshots locally", true)), null),
+			new Setting("saveScreenshots", "Save screenshots locally", true),
+			new Setting("fullSizeScreenshots", "Full-size screenshots", false)), null),
 		new Group("Events and news", List.of(
 			new Setting("eventMessages", "Event messages in chat", true),
 			new Setting("tileSound", "Ding when my team completes a tile", true),

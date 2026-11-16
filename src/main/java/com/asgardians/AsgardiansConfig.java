@@ -167,6 +167,19 @@ public interface AsgardiansConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "fullSizeScreenshots",
+		name = "Full-size screenshots",
+		description = "Keep screenshots at your full screen size instead of shrinking them to 1920x1080. Uses more memory: "
+			+ "when the client is low on memory they're shrunk anyway, so it can't crash the client",
+		section = sharingSection,
+		position = 3
+	)
+	default boolean fullSizeScreenshots()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "showCodeword",
 		name = "Show event codeword",
 		description = "While a clan event you're in is live, show its codeword and the time on screen so it appears in screenshots",
@@ -351,7 +364,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "readyChecks",
 		name = "Party ready checks",
-		description = "Show ready checks from your RuneLite party on screen (right-click the box to answer), ring a bell when one starts and say the result in chat",
+		description = "Show ready checks from your RuneLite party on screen (answer on the Party page, by right-clicking the chat message or with !asg r / !asg nr), ring a bell when one starts and say the result in chat",
 		section = groupsSection,
 		position = 3
 	)

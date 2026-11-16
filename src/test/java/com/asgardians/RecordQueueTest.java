@@ -138,4 +138,38 @@ public class RecordQueueTest
 		}
 		assertEquals(RecordQueue.HISTORY, queue.recent().size());
 	}
+
+	@Test
+	public void waitingScreenshotsAreCapped()
+	{
+		RecordQueue queue = new RecordQueue();
+		int each = (int) (RecordQueue.MAX_SCREENSHOT_BYTES / 3);
+		Record[] records = new Record[5];
+		for (int i = 0; i < records.length; i++)
+		{
+			records[i] = record(0);
+			records[i].setScreenshot(true);
+			records[i].awaitingScreenshot = true;
+			queue.add(records[i]);
+			queue.attachScreenshot(records[i].getId(), new byte[each]);
+		}
+		assertTrue(queue.screenshotBytes() <= RecordQueue.MAX_SCREENSHOT_BYTES);
+		// The oldest lost their pictures; the newest kept theirs.
+		assertFalse(records[0].isScreenshot());
+		assertFalse(records[1].isScreenshot());
+		assertTrue(records[4].isScreenshot());
+		List<Record> batch = queue.takeBatch(1_000);
+		assertEquals(5, batch.size());
+		assertEquals(3, queue.screenshotsFor(batch).size());
+		queue.sent(batch);
+		assertEquals(0, queue.screenshotBytes());
+	}
+
+	@Test
+	public void bigScreensAreShrunkToFit()
+	{
+		assertEquals(new java.awt.Dimension(1920, 1080), AsgardiansPlugin.shotSize(3840, 2160));
+		assertEquals(new java.awt.Dimension(1440, 1080), AsgardiansPlugin.shotSize(2880, 2160));
+		assertEquals(new java.awt.Dimension(1280, 720), AsgardiansPlugin.shotSize(1280, 720));
+	}
 }

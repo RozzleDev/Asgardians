@@ -19,6 +19,11 @@ class RecordQueue
 	static final int HISTORY = 20;
 	/** How long a record waits for its screenshot before going without one. */
 	static final long SCREENSHOT_WAIT_MILLIS = 10_000;
+	/**
+	 * The most screenshot data held while waiting to upload. When the website can't be reached, pictures pile up; past
+	 * this the oldest waiting records go without theirs, so a long outage can't run the client out of memory.
+	 */
+	static final long MAX_SCREENSHOT_BYTES = 40L * 1024 * 1024;
 
 	enum Status
 	{
@@ -50,6 +55,7 @@ class RecordQueue
 	 */
 	private int sendSingly;
 	private final Map<String, byte[]> screenshots = new HashMap<>();
+	private long screenshotBytes;
 	private final LinkedList<Entry> history = new LinkedList<>();
 	private final Map<String, Entry> historyById = new HashMap<>();
 
@@ -60,7 +66,7 @@ class RecordQueue
 			Record dropped = pending.pollFirst();
 			if (dropped != null)
 			{
-				screenshots.remove(dropped.getId());
+				dropScreenshot(dropped.getId());
 			}
 		}
 		pending.addLast(record);
@@ -93,8 +99,11 @@ class RecordQueue
 		{
 			if (record.getId().equals(recordId))
 			{
+				dropScreenshot(recordId);
 				screenshots.put(recordId, png);
+				screenshotBytes += png.length;
 				record.awaitingScreenshot = false;
+				trimScreenshots(recordId);
 				return;
 			}
 		}
@@ -149,7 +158,7 @@ class RecordQueue
 		}
 		for (Record record : batch)
 		{
-			screenshots.remove(record.getId());
+			dropScreenshot(record.getId());
 			Entry entry = historyById.get(record.getId());
 			if (entry != null)
 			{
@@ -188,9 +197,53 @@ class RecordQueue
 	{
 		for (Record record : batch)
 		{
-			screenshots.remove(record.getId());
+			dropScreenshot(record.getId());
 		}
 		mark(batch, Status.SENT);
+	}
+
+	/** Total screenshot data held, in bytes. */
+	synchronized long screenshotBytes()
+	{
+		return screenshotBytes;
+	}
+
+	private void dropScreenshot(String recordId)
+	{
+		byte[] png = screenshots.remove(recordId);
+		if (png != null)
+		{
+			screenshotBytes -= png.length;
+		}
+	}
+
+	/** Over the limit: the oldest waiting records lose their pictures (never {@code keep}, the one just added). */
+	private void trimScreenshots(String keep)
+	{
+		for (Record record : pending)
+		{
+			if (screenshotBytes <= MAX_SCREENSHOT_BYTES)
+			{
+				return;
+			}
+			if (!record.getId().equals(keep) && screenshots.containsKey(record.getId()))
+			{
+				dropScreenshot(record.getId());
+				record.setScreenshot(false);
+			}
+		}
+		if (screenshotBytes > MAX_SCREENSHOT_BYTES)
+		{
+			// Even alone it's too big (or the rest are in flight): this one goes without.
+			for (Record record : pending)
+			{
+				if (record.getId().equals(keep))
+				{
+					dropScreenshot(keep);
+					record.setScreenshot(false);
+				}
+			}
+		}
 	}
 
 	synchronized int size()
@@ -207,6 +260,7 @@ class RecordQueue
 	{
 		pending.clear();
 		screenshots.clear();
+		screenshotBytes = 0;
 	}
 
 	private void mark(List<Record> batch, Status status)
