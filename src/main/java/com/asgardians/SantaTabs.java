@@ -189,7 +189,8 @@ final class SantaTabs
 			}
 		}
 
-		boolean shaded = fighting && shaded(enc);
+		// No leaderboards before the start (any damage from testing would show), only once it's live or over.
+		boolean shaded = (fighting && shaded(enc)) || "upcoming".equals(board.getEvent().getStatus());
 		List<SantaData.Player> top = SantaData.orEmpty(board.getTopDamage());
 		if (!shaded && (!top.isEmpty() || page.getMe() != null || (page.getSkillers() != null && enc != null)))
 		{
