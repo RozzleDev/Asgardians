@@ -24,26 +24,40 @@ final class SettingsTabs
 		String key;
 		String name;
 		boolean byDefault;
-		/** Above 0: a 0-max slider (a volume, in %) with this default, rather than a switch. */
+		/** Above -1: a 0-100% slider with this default, rather than a switch. */
 		int slider;
+		/** What the slider shows at 0%. */
+		String zero;
 
 		Setting(String key, String name, boolean byDefault)
 		{
-			this(key, name, byDefault, 0);
+			this(key, name, byDefault, -1, null);
 		}
 
-		Setting(String key, String name, boolean byDefault, int slider)
+		Setting(String key, String name, boolean byDefault, int slider, String zero)
 		{
 			this.key = key;
 			this.name = name;
 			this.byDefault = byDefault;
 			this.slider = slider;
+			this.zero = zero;
 		}
 
-		/** A volume slider, 0-100%. */
+		/** A volume slider, 0-100%. 0 is silent. */
 		static Setting volume(String key, String name, int byDefault)
 		{
-			return new Setting(key, name, false, byDefault);
+			return new Setting(key, name, false, byDefault, "Off");
+		}
+
+		/** The screenshot size slider, 0-100% of the screen. 0 is automatic (fit 1920x1080). */
+		static Setting scale(String key, String name)
+		{
+			return new Setting(key, name, false, 0, "Auto");
+		}
+
+		boolean isSlider()
+		{
+			return slider >= 0;
 		}
 	}
 
@@ -65,7 +79,7 @@ final class SettingsTabs
 			new Setting("shareDeaths", "Share my deaths", true),
 			new Setting("uploadScreenshots", "Upload screenshots", true),
 			new Setting("saveScreenshots", "Save screenshots locally", true),
-			new Setting("fullSizeScreenshots", "Full-size screenshots", false)), null),
+			Setting.scale("screenshotScale", "Screenshot size")), null),
 		new Group("Events and news", List.of(
 			new Setting("eventMessages", "Event messages in chat", true),
 			new Setting("tileSound", "Ding when my team completes a tile", true),
@@ -105,7 +119,7 @@ final class SettingsTabs
 		return saved == null ? s.isByDefault() : Boolean.parseBoolean(saved.trim());
 	}
 
-	/** A volume setting's value, 0-100: what's saved, else its default. */
+	/** A slider setting's value, 0-100: what's saved, else its default. */
 	static int percent(AsgardiansPanel.Settings settings, Setting s)
 	{
 		String saved = settings.get(s.getKey());
@@ -125,7 +139,7 @@ final class SettingsTabs
 		int value = percent(settings, s);
 		Card card = new Card(null);
 		card.setBorder(new EmptyBorder(6, 8, 6, 8));
-		javax.swing.JLabel shown = PanelParts.plain(value == 0 ? "Off" : value + "%", QUIET);
+		javax.swing.JLabel shown = PanelParts.plain(value == 0 ? s.getZero() : value + "%", QUIET);
 		JPanel top = new JPanel(new BorderLayout(6, 0));
 		top.setOpaque(false);
 		top.add(PanelParts.cut(s.getName(), TEXT), BorderLayout.CENTER);
@@ -137,7 +151,7 @@ final class SettingsTabs
 		bar.addChangeListener(e ->
 		{
 			int v = bar.getValue();
-			shown.setText(v == 0 ? "Off" : v + "%");
+			shown.setText(v == 0 ? s.getZero() : v + "%");
 			if (!bar.getValueIsAdjusting())
 			{
 				settings.set(s.getKey(), String.valueOf(v));
@@ -169,7 +183,7 @@ final class SettingsTabs
 			}
 			for (Setting s : group.getSettings())
 			{
-				if (s.getSlider() > 0)
+				if (s.isSlider())
 				{
 					column.add(Box.createVerticalStrut(4));
 					Card card = slider(settings, s);

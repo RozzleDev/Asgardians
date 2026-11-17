@@ -168,8 +168,13 @@ public class RecordQueueTest
 	@Test
 	public void bigScreensAreShrunkToFit()
 	{
-		assertEquals(new java.awt.Dimension(1920, 1080), AsgardiansPlugin.shotSize(3840, 2160));
-		assertEquals(new java.awt.Dimension(1440, 1080), AsgardiansPlugin.shotSize(2880, 2160));
-		assertEquals(new java.awt.Dimension(1280, 720), AsgardiansPlugin.shotSize(1280, 720));
+		// Automatic: shrunk to fit 1920x1080, never stretched.
+		assertEquals(new java.awt.Dimension(1920, 1080), AsgardiansPlugin.shotSize(3840, 2160, 0));
+		assertEquals(new java.awt.Dimension(1440, 1080), AsgardiansPlugin.shotSize(2880, 2160, 0));
+		assertEquals(new java.awt.Dimension(1280, 720), AsgardiansPlugin.shotSize(1280, 720, 0));
+		// A set size: that percentage of the screen.
+		assertEquals(new java.awt.Dimension(3840, 2160), AsgardiansPlugin.shotSize(3840, 2160, 100));
+		assertEquals(new java.awt.Dimension(1920, 1080), AsgardiansPlugin.shotSize(3840, 2160, 50));
+		assertEquals(new java.awt.Dimension(1280, 720), AsgardiansPlugin.shotSize(1280, 720, 150));
 	}
 }

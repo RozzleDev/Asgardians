@@ -4211,21 +4211,9 @@ public class AsgardiansPlugin extends Plugin
 	/** Records sharing the screenshot being taken. Client thread. */
 	private final List<Record> shotWaiting = new ArrayList<>();
 
-	/** Screenshots are shrunk to fit this (unless "Full-size screenshots" is on), so a 4K screen doesn't hold 33 MB per picture. */
+	/** Screenshots are shrunk to fit this (unless "Screenshot size" is set), so a 4K screen doesn't hold 33 MB per picture. */
 	private static final int SHOT_MAX_WIDTH = 1920;
 	private static final int SHOT_MAX_HEIGHT = 1080;
-
-	/**
-	 * Enough free memory for a picture this size, its PNG and a safe margin besides. Without this, a client already
-	 * near its limit runs out of memory on the screenshot.
-	 */
-	private static boolean roomFor(java.awt.Dimension size)
-	{
-		Runtime rt = Runtime.getRuntime();
-		long free = rt.maxMemory() - (rt.totalMemory() - rt.freeMemory());
-		long picture = (long) size.width * size.height * 4;
-		return free > picture * 3 + 32L * 1024 * 1024;
-	}
 
 	private List<Record> takeShotWaiting()
 	{
@@ -4234,10 +4222,15 @@ public class AsgardiansPlugin extends Plugin
 		return out;
 	}
 
-	/** The picture's size: the screen's, shrunk (never stretched) to fit {@link #SHOT_MAX_WIDTH} x {@link #SHOT_MAX_HEIGHT}. */
-	static java.awt.Dimension shotSize(int width, int height)
+	/**
+	 * The picture's size. Scale 0 (automatic): the screen's, shrunk (never stretched) to fit {@link #SHOT_MAX_WIDTH} x
+	 * {@link #SHOT_MAX_HEIGHT}. Otherwise that percentage of the screen, like Dink's Screenshot Scale.
+	 */
+	static java.awt.Dimension shotSize(int width, int height, int scalePercent)
 	{
-		double scale = Math.min(1.0, Math.min((double) SHOT_MAX_WIDTH / width, (double) SHOT_MAX_HEIGHT / height));
+		double scale = scalePercent > 0
+			? Math.min(100, scalePercent) / 100.0
+			: Math.min(1.0, Math.min((double) SHOT_MAX_WIDTH / width, (double) SHOT_MAX_HEIGHT / height));
 		return new java.awt.Dimension(Math.max(1, (int) Math.round(width * scale)), Math.max(1, (int) Math.round(height * scale)));
 	}
 
@@ -4284,14 +4277,7 @@ public class AsgardiansPlugin extends Plugin
 		try
 		{
 			java.awt.Dimension full = new java.awt.Dimension(image.getWidth(null), image.getHeight(null));
-			java.awt.Dimension size = config.fullSizeScreenshots() && roomFor(full) ? full : shotSize(full.width, full.height);
-			if (!roomFor(size))
-			{
-				// Memory is nearly full (many plugins on RuneLite's default limit): a picture could tip the client over.
-				log.warn("Asgardians screenshot skipped, the client is low on memory");
-				records.forEach(r -> queue.noScreenshot(r.getId()));
-				return;
-			}
+			java.awt.Dimension size = shotSize(full.width, full.height, config.screenshotScale());
 			BufferedImage shot = new BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_RGB);
 			Graphics2D g = shot.createGraphics();
 			g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);

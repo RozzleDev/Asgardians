@@ -166,17 +166,20 @@ public interface AsgardiansConfig extends Config
 		return true;
 	}
 
+	@Range(min = 0, max = 100)
+	@Units(Units.PERCENT)
 	@ConfigItem(
-		keyName = "fullSizeScreenshots",
-		name = "Full-size screenshots",
-		description = "Keep screenshots at your full screen size instead of shrinking them to 1920x1080. Uses more memory: "
-			+ "when the client is low on memory they're shrunk anyway, so it can't crash the client",
+		keyName = "screenshotScale",
+		name = "Screenshot size",
+		description = "0% is automatic: screenshots are shrunk to fit 1920x1080. Anything else is that percentage of your "
+			+ "screen size, so 100% keeps them full size. Bigger uses more memory, so keep it low if you run lots of "
+			+ "plugins or a 4K screen.",
 		section = sharingSection,
 		position = 3
 	)
-	default boolean fullSizeScreenshots()
+	default int screenshotScale()
 	{
-		return false;
+		return 0;
 	}
 
 	@ConfigItem(
