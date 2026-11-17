@@ -93,6 +93,16 @@ final class SantaData
 		/** On attack entries: the attack's name, and whether the minions launched it. */
 		String attackName;
 		boolean minion;
+		/** On hits: how the damage fell across the boss, minions and decoy (null while blinded). */
+		List<Split> split;
+	}
+
+	/** One unit's share of a drop's damage; <c>unit</c> is the unit's key (e.g. "boss"). */
+	@Data
+	static class Split
+	{
+		String unit;
+		int damage;
 	}
 
 	@Data
@@ -346,6 +356,8 @@ final class SantaData
 		String boss;
 		/** The wiki picture, when its file name isn't just the item name. Only the preview uses it: RuneLite draws items itself. */
 		String wikiImageUrl;
+		/** The game's item id from the OSRS Wiki, so pets and untradeables (which the name search can't find) get their icon. */
+		Integer itemId;
 	}
 
 	/** The member's place on the event's top-10 damage board; both null when they're not on it. */

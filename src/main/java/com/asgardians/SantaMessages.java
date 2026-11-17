@@ -68,7 +68,7 @@ final class SantaMessages
 				}
 				return item.isHidden()
 					? "Santa Claws: your " + item.getItemName() + " hit " + boss + ", but the shade hides the damage."
-					: "Santa Claws: your " + item.getItemName() + " hit " + boss + " for " + item.getDamage() + " damage!";
+					: "Santa Claws: your " + item.getItemName() + " hit " + targets(board, item, boss) + " for " + item.getDamage() + " damage!";
 			case "attack":
 				return "Santa Claws: " + (item.isMinion() ? "the minions are" : boss + " is") + " charging "
 					+ (item.getAttackName() != null ? item.getAttackName() : "a new attack")
@@ -78,6 +78,55 @@ final class SantaMessages
 			default:
 				return null;
 		}
+	}
+
+	/**
+	 * Who a drop hit, like the website: "Robbin" when one minion took it all, else each with its share ("Robbin (30) and
+	 * Frosty (12)"). The boss when the split isn't known.
+	 */
+	static String targets(SantaData.Board board, SantaData.LogItem item, String boss)
+	{
+		java.util.List<SantaData.Unit> units = java.util.Collections.emptyList();
+		for (SantaData.Encounter e : SantaData.orEmpty(board.getEncounters()))
+		{
+			if (item.getEncounterId() != null && e.getId() == item.getEncounterId())
+			{
+				units = SantaData.orEmpty(e.getUnits());
+			}
+		}
+		java.util.List<String> names = new java.util.ArrayList<>();
+		java.util.List<Integer> shares = new java.util.ArrayList<>();
+		for (SantaData.Split s : SantaData.orEmpty(item.getSplit()))
+		{
+			if (s.getDamage() <= 0)
+			{
+				continue;
+			}
+			String name = boss;
+			for (SantaData.Unit u : units)
+			{
+				if (u.getKey() != null && u.getKey().equalsIgnoreCase(s.getUnit()) && u.getName() != null)
+				{
+					name = u.getName();
+				}
+			}
+			names.add(name);
+			shares.add(s.getDamage());
+		}
+		if (names.isEmpty())
+		{
+			return boss;
+		}
+		if (names.size() == 1)
+		{
+			return names.get(0);
+		}
+		StringBuilder text = new StringBuilder();
+		for (int i = 0; i < names.size(); i++)
+		{
+			text.append(i == 0 ? "" : i == names.size() - 1 ? " and " : ", ").append(names.get(i)).append(" (").append(shares.get(i)).append(')');
+		}
+		return text.toString();
 	}
 
 	private static String bossName(SantaData.Board board, Integer encounterId)

@@ -1006,7 +1006,7 @@ final class SantaTabs
 		row.setOpaque(false);
 		row.setBorder(new EmptyBorder(1, 0, 1, 0));
 		row.setAlignmentX(JComponent.LEFT_ALIGNMENT);
-		Integer itemId = PanelParts.itemNamed(d.getItemName());
+		Integer itemId = d.getItemId() != null && d.getItemId() > 0 ? d.getItemId() : PanelParts.itemNamed(d.getItemName());
 		if (itemId != null)
 		{
 			row.add(PanelParts.itemBox(itemId, 22), BorderLayout.WEST);
@@ -1080,7 +1080,8 @@ final class SantaTabs
 			case "kc":
 				return "Get " + n + " " + minigame(d.getSkill()) + " kill" + s + " as a clan";
 			case "items":
-				return "Find " + n + " of: " + String.join(", ", SantaData.orEmpty(d.getItems()));
+				return "Find " + n + " skilling drop" + s + " (no damage, they only block the attack): "
+					+ String.join(", ", SantaData.orEmpty(d.getItems()));
 			case "rally":
 				return "Get " + n + " clanmate" + s + " to press Defend!";
 			case "vote":
@@ -1137,7 +1138,7 @@ final class SantaTabs
 			case "kc":
 				return left + " " + minigame(d.getSkill()) + " kill" + s + " left";
 			case "items":
-				return left + " more unique" + s;
+				return left + " more skilling drop" + s;
 			case "rally":
 				return left + " more defender" + s;
 			case "vote":

@@ -19,6 +19,36 @@ public class SantaMessagesTest
 		return i;
 	}
 
+	private static SantaData.Split split(String unit, int damage)
+	{
+		SantaData.Split s = new SantaData.Split();
+		s.setUnit(unit);
+		s.setDamage(damage);
+		return s;
+	}
+
+	private static SantaData.Unit unit(String key, String name)
+	{
+		SantaData.Unit u = new SantaData.Unit();
+		u.setKey(key);
+		u.setName(name);
+		return u;
+	}
+
+	@Test
+	public void aDropNamesTheMinionOrBossItActuallyHit()
+	{
+		SantaData.Board b = board();
+		b.getEncounters().get(0).setUnits(Arrays.asList(unit("robbin-1", "Robbin"), unit("boss", "Frosty")));
+		SantaData.LogItem hit = item(3, "hit", "Iron Orish");
+		hit.setSplit(Arrays.asList(split("robbin-1", 42)));
+		assertEquals("Robbin", SantaMessages.targets(b, hit, "Frosty"));
+		hit.setSplit(Arrays.asList(split("robbin-1", 30), split("boss", 12)));
+		assertEquals("Robbin (30) and Frosty (12)", SantaMessages.targets(b, hit, "Frosty"));
+		hit.setSplit(null);
+		assertEquals("Frosty", SantaMessages.targets(b, hit, "Frosty"));
+	}
+
 	private static SantaData.Board board(SantaData.LogItem... recent)
 	{
 		SantaData.Encounter e = new SantaData.Encounter();

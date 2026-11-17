@@ -33,7 +33,7 @@ public class SantaTabsTest
 		assertEquals("Gain 250k Thieving XP as a clan", SantaTabs.defenceText(defence("xp", 250_000, "Thieving")));
 		assertEquals("Get 50 Wintertodt kills as a clan", SantaTabs.defenceText(defence("kc", 50, "wintertodt")));
 		assertEquals("Land 1 confirmed drop", SantaTabs.defenceText(defence("drops", 1, null)));
-		assertEquals("Find 1 of: Mysterious page, Dark dye", SantaTabs.defenceText(defence("items", 1, null, "Mysterious page", "Dark dye")));
+		assertEquals("Find 1 skilling drop (no damage, they only block the attack): Mysterious page, Dark dye", SantaTabs.defenceText(defence("items", 1, null, "Mysterious page", "Dark dye")));
 		assertEquals("Get 25 clanmates to press Defend!", SantaTabs.defenceText(defence("rally", 25, null)));
 		assertEquals("9 / 25 defending", SantaTabs.progressText(defence("rally", 25, null), 9));
 		assertEquals("62.5k / 100k XP", SantaTabs.progressText(defence("xp", 100_000, "Thieving"), 62_500));
