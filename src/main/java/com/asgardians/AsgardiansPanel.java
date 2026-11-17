@@ -1228,7 +1228,7 @@ class AsgardiansPanel extends PluginPanel
 
 	/**
 	 * Gives the Home tiles their OSRS pictures: the Quests, Clan and Skills tab icons from the game, coins, the
-	 * newspaper and the gold speedrun trophy as items, and the Grid Master, Grouping and Account icons, which RuneLite
+	 * newspaper, the gold speedrun trophy and the Santa hat as items, and the Grid Master, Grouping and Account icons, which RuneLite
 	 * has no IDs for, from the plugin's own small copies.
 	 */
 	void loadTilePictures(GamePictures pictures)
@@ -1245,6 +1245,8 @@ class AsgardiansPanel extends PluginPanel
 		pictures.item(net.runelite.api.gameval.ItemID.TRAIL_CLUE_EASY_SIMPLE001, 1, img -> setTilePicture(STAFF_MOTD, img));
 		pictures.item(NEWSPAPER, 1, img -> setTilePicture(STAFF_NEWS, img));
 		pictures.item(net.runelite.api.gameval.ItemID.FEATHER, 1, img -> setTilePicture(STAFF_NOTES, img));
+		// The game's Santa hat, the same one signed-up members get by their name in clan chat.
+		pictures.item(net.runelite.api.gameval.ItemID.SANTA_HAT, 1, img -> setTilePicture(SANTA, img));
 		setTilePicture(BINGO, resource("tile_bingo.png"));
 		setTilePicture(GROUPS, resource("tile_groups.png"));
 		setTilePicture(PROFILE, resource("tile_profile.png"));
