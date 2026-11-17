@@ -128,7 +128,7 @@ final class SantaTabs
 		{
 			// Only signed-up members take part: say so before anything else, and where to sign up.
 			JLabel notice = PanelParts.small("You're not signed up for Santa Claws, so your drops, Defend!, votes and XP don't count yet. "
-				+ "Sign up in the Events tab (or /santa signup in Discord).", new Color(0xFF, 0xC8, 0x6B));
+				+ "Sign up in the Events tab (or /asg bingo signup in Discord).", new Color(0xFF, 0xC8, 0x6B));
 			PanelParts.addCard(tab, notice);
 		}
 		if (!fighting)
