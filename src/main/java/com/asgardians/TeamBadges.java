@@ -105,6 +105,57 @@ final class TeamBadges
 		return out;
 	}
 
+	/** Santa Claws: the signed-up members (by {@link #key}) who get a Santa hat by their name while it's live. */
+	static Set<String> hatKeys(java.util.List<String> names)
+	{
+		Set<String> out = new HashSet<>();
+		if (names != null)
+		{
+			for (String name : names)
+			{
+				if (name != null && !name.isBlank())
+				{
+					out.add(key(name));
+				}
+			}
+		}
+		return out;
+	}
+
+	/** An item picture (the Santa hat) as a chat icon: its empty edges trimmed, then scaled to fit 13 by 13. */
+	static BufferedImage chatIcon(BufferedImage item)
+	{
+		int minX = item.getWidth(), minY = item.getHeight(), maxX = -1, maxY = -1;
+		for (int y = 0; y < item.getHeight(); y++)
+		{
+			for (int x = 0; x < item.getWidth(); x++)
+			{
+				if ((item.getRGB(x, y) >>> 24) != 0)
+				{
+					minX = Math.min(minX, x);
+					minY = Math.min(minY, y);
+					maxX = Math.max(maxX, x);
+					maxY = Math.max(maxY, y);
+				}
+			}
+		}
+		BufferedImage icon = new BufferedImage(13, 13, BufferedImage.TYPE_INT_ARGB);
+		if (maxX < 0)
+		{
+			return icon;
+		}
+		int w = maxX - minX + 1;
+		int h = maxY - minY + 1;
+		double scale = Math.min(13.0 / w, 13.0 / h);
+		int sw = Math.max(1, (int) Math.round(w * scale));
+		int sh = Math.max(1, (int) Math.round(h * scale));
+		Graphics2D g = icon.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+		g.drawImage(item, (13 - sw) / 2, (13 - sh) / 2, (13 - sw) / 2 + sw, (13 - sh) / 2 + sh, minX, minY, maxX + 1, maxY + 1, null);
+		g.dispose();
+		return icon;
+	}
+
 	/** How a name is looked up: tags removed, odd spaces normalised, lowercase. */
 	static String key(String name)
 	{

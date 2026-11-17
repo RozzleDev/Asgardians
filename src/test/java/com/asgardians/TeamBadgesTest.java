@@ -32,4 +32,30 @@ public class TeamBadgesTest
 		assertNull(players.get("someone else"));
 		assertEquals(Map.of(), TeamBadges.players(ClanViewTest.view(List.of(), List.of())));
 	}
+
+	@Test
+	public void santaHatsGoToSignedUpNamesHoweverTheyAreWritten()
+	{
+		java.util.Set<String> hats = TeamBadges.hatKeys(List.of("Iron Orish", "Clo BTW"));
+		assertEquals(true, hats.contains(TeamBadges.key("iron orish")));
+		assertEquals(true, hats.contains(TeamBadges.key("<col=ff0000>Clo BTW</col>")));
+		assertEquals(false, hats.contains(TeamBadges.key("Someone else")));
+		assertEquals(0, TeamBadges.hatKeys(null).size());
+	}
+
+	@Test
+	public void theHatIsTrimmedAndFitsAChatIcon()
+	{
+		// A 36x32 item picture with the hat in a 20x10 patch: trimmed, then scaled to fit 13 wide.
+		java.awt.image.BufferedImage item = new java.awt.image.BufferedImage(36, 32, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+		java.awt.Graphics2D g = item.createGraphics();
+		g.setColor(java.awt.Color.RED);
+		g.fillRect(8, 11, 20, 10);
+		g.dispose();
+		java.awt.image.BufferedImage icon = TeamBadges.chatIcon(item);
+		assertEquals(13, icon.getWidth());
+		assertEquals(13, icon.getHeight());
+		assertEquals(0xFF, icon.getRGB(6, 6) >>> 24);
+		assertEquals(0, icon.getRGB(6, 0) >>> 24);
+	}
 }

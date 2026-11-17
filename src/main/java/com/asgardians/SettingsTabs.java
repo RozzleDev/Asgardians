@@ -89,7 +89,7 @@ final class SettingsTabs
 			new Setting("motdAtLogin", "Message of the day at login", true),
 			new Setting("pbRankMessages", "Clan rank for new PBs", true),
 			new Setting("newsMessages", "Announcements in chat", true),
-			new Setting("teamBadges", "Team badges in clan chat", true),
+			new Setting("teamBadges", "Event badges in clan chat", true),
 			new Setting("showCodeword", "Show event codeword", true),
 			new Setting("codewordDetailed", "Detailed codeword box", false)), null),
 		new Group("LFG and party", List.of(

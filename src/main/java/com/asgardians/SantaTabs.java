@@ -124,6 +124,13 @@ final class SantaTabs
 		// folded), with the line-up of presents under it.
 		SantaData.Encounter enc = board.active();
 		boolean fighting = board.getEvent().isLive() && enc != null && enc.isRevealed();
+		if (page.getMe() != null && !page.getMe().isSignedUp())
+		{
+			// Only signed-up members take part: say so before anything else, and where to sign up.
+			JLabel notice = PanelParts.small("You're not signed up for Santa Claws, so your drops, Defend!, votes and XP don't count yet. "
+				+ "Sign up in the Events tab (or /santa signup in Discord).", new Color(0xFF, 0xC8, 0x6B));
+			PanelParts.addCard(tab, notice);
+		}
 		if (!fighting)
 		{
 			PanelParts.addCard(tab, actsRow(board, in.getImages()));
@@ -979,7 +986,8 @@ final class SantaTabs
 		card.add(Box.createVerticalStrut(4));
 		card.add(PanelParts.small(s.getMyXp() != null ? "You: #" + s.getMyRank() + " with " + fmtXp(s.getMyXp()) + " XP"
 			: "You haven't gained any yet.", PanelParts.GOLD));
-		card.add(PanelParts.small("Counted live by the clan plugin, so only members running it show up.", PanelParts.QUIET));
+		card.add(PanelParts.small("Live from the clan plugin. Members without it count from Wise Old Man, when they log out.",
+			PanelParts.QUIET));
 		return card;
 	}
 

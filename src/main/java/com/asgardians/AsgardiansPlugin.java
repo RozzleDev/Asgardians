@@ -249,6 +249,10 @@ public class AsgardiansPlugin extends Plugin
 	private boolean badgesReserved;
 	/** Players in the live event, by {@link TeamBadges#key}, to their team's badge. */
 	private volatile Map<String, TeamBadges.Badge> badgePlayers = Map.of();
+	/** Santa Claws: the chat icon reserved for the Santa hat, whether it's painted yet, and who gets it (by {@link TeamBadges#key}). */
+	private int santaHatIcon = -1;
+	private volatile boolean santaHatPainted;
+	private volatile Set<String> santaHats = Set.of();
 	/** Set until the first load after logging in, which lists any unread announcements in chat. */
 	private volatile boolean loginNewsPending = true;
 	private final AtomicBoolean fetchingClan = new AtomicBoolean();
@@ -404,6 +408,7 @@ public class AsgardiansPlugin extends Plugin
 			{
 				badgeIcons[i] = chatIconManager.registerChatIcon(new BufferedImage(13, 13, BufferedImage.TYPE_INT_ARGB));
 			}
+			santaHatIcon = chatIconManager.registerChatIcon(new BufferedImage(13, 13, BufferedImage.TYPE_INT_ARGB));
 			badgesReserved = true;
 		}
 		codewordOverlay = new CodewordOverlay(this, config, () -> clanView, this::santaCodeword);
@@ -956,11 +961,32 @@ public class AsgardiansPlugin extends Plugin
 	/** Puts the sender's team badge in place of their rank icon, while an event with teams is live. Client thread. */
 	private void addTeamBadge(ChatMessage event)
 	{
-		TeamBadges.Badge badge = badgePlayers.get(TeamBadges.key(event.getName()));
+		String key = TeamBadges.key(event.getName());
+		TeamBadges.Badge badge = badgePlayers.get(key);
 		int index = badge != null ? chatIconManager.chatIconIndex(badgeIcons[badge.getSlot()]) : -1;
+		// Not on a team: a Santa hat for members signed up for Santa Claws while it's live.
+		if (index < 0 && santaHatPainted && santaHats.contains(key))
+		{
+			index = chatIconManager.chatIconIndex(santaHatIcon);
+		}
 		if (index >= 0)
 		{
 			event.getMessageNode().setName(TeamBadges.withBadge(event.getMessageNode().getName(), index));
+		}
+	}
+
+	/** Who gets a Santa hat (signed up, while Santa Claws is live), painting the hat the first time it's needed. */
+	private void updateSantaHats(java.util.List<String> names)
+	{
+		santaHats = TeamBadges.hatKeys(names);
+		if (!santaHatPainted && !santaHats.isEmpty() && santaHatIcon >= 0)
+		{
+			net.runelite.client.util.AsyncBufferedImage hat = itemManager.getImage(net.runelite.api.gameval.ItemID.SANTA_HAT);
+			hat.onLoaded(() -> clientThread.invokeLater(() ->
+			{
+				chatIconManager.updateChatIcon(santaHatIcon, TeamBadges.chatIcon(hat));
+				santaHatPainted = true;
+			}));
 		}
 	}
 
@@ -2906,10 +2932,12 @@ public class AsgardiansPlugin extends Plugin
 			if (result.getStatus() == 204 || result.getStatus() == 404)
 			{
 				santaLive = false;
+				updateSantaHats(null);
 				SwingUtilities.invokeLater(() -> target.updateSanta(null, null, null, now));
 			}
 			else if (result.ok())
 			{
+				updateSantaHats(result.getBody().getHats());
 				noteSantaBoss(result.getBody());
 				announceSanta(result.getBody());
 				SwingUtilities.invokeLater(() -> target.updateSanta(result.getBody(), null, null, now));

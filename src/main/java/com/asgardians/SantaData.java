@@ -32,6 +32,8 @@ final class SantaData
 		Skillers skillers;
 		/** Question attacks this member has voted on, in the plugin or on Discord: attack id → the option they picked. */
 		java.util.Map<Long, String> myVotes;
+		/** While the event is live: the members signed up, who get a Santa hat by their name in clan chat. */
+		List<String> hats;
 	}
 
 	/** XP in the current boss's skills since it came up (reported by the clan plugin): the top 10, and the member's own place. */
@@ -369,6 +371,8 @@ final class SantaData
 		Integer rank;
 		/** Moderator rank and above: may spend the clan's skips from the panel. */
 		boolean canSkip;
+		/** Signed up for Santa Claws: only then do their drops, Defend!, votes and XP count. True when the site doesn't say. */
+		boolean signedUp = true;
 	}
 
 	/** After pressing Defend!: how many different members have, out of how many, and whether that blocked it. */

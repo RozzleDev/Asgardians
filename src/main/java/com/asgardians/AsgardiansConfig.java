@@ -318,8 +318,8 @@ public interface AsgardiansConfig extends Config
 
 	@ConfigItem(
 		keyName = "teamBadges",
-		name = "Team badges in clan chat",
-		description = "While a clan event with teams is live, show each player's team in place of their clan rank icon in clan chat. Only players in the event get a badge.",
+		name = "Event badges in clan chat",
+		description = "While a clan event with teams is live, show each player's team in place of their clan rank icon in clan chat; while Santa Claws is live, a Santa hat for everyone signed up. Only players in the event get a badge.",
 		section = eventsSection,
 		position = 2
 	)
