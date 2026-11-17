@@ -3,27 +3,24 @@ package com.asgardians;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.util.function.Supplier;
-import net.runelite.api.MenuAction;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.ui.overlay.components.TitleComponent;
 
 /**
- * The party's ready check on screen while it's on, and its result for a few seconds after. Members answer by
- * right-clicking the box (Ready / Not ready) or from the panel's Party tab.
+ * The party's ready check on screen while it's on, and its result for a few seconds after. Members answer on the
+ * panel's Party page or by typing "!asg r" / "!asg nr".
  */
 class ReadyCheckOverlay extends OverlayPanel
 {
 	private final Supplier<ReadyCheck.View> view;
 
-	ReadyCheckOverlay(AsgardiansPlugin plugin, Supplier<ReadyCheck.View> view, java.util.function.Consumer<Boolean> answer)
+	ReadyCheckOverlay(AsgardiansPlugin plugin, Supplier<ReadyCheck.View> view)
 	{
 		super(plugin);
 		this.view = view;
 		setPosition(OverlayPosition.TOP_CENTER);
-		addMenuEntry(MenuAction.RUNELITE_OVERLAY, "Ready", "Ready check", e -> answer.accept(true));
-		addMenuEntry(MenuAction.RUNELITE_OVERLAY, "Not ready", "Ready check", e -> answer.accept(false));
 	}
 
 	@Override
@@ -46,7 +43,7 @@ class ReadyCheckOverlay extends OverlayPanel
 		}
 		if (!v.isOver() && v.getMine() == ReadyCheck.Answer.WAITING)
 		{
-			panelComponent.getChildren().add(LineComponent.builder().left("Right-click to answer").leftColor(PanelParts.QUIET).build());
+			panelComponent.getChildren().add(LineComponent.builder().left("Type !asg r to ready up").leftColor(PanelParts.QUIET).build());
 		}
 		return super.render(graphics);
 	}

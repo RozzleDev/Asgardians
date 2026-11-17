@@ -410,7 +410,7 @@ public class AsgardiansPlugin extends Plugin
 		overlayManager.add(codewordOverlay);
 		wsClient.registerMessage(AsgReadyCheck.class);
 		wsClient.registerMessage(AsgReadyAnswer.class);
-		readyCheckOverlay = new ReadyCheckOverlay(this, () -> config.readyChecks() ? readyView() : null, this::answerReadyCheck);
+		readyCheckOverlay = new ReadyCheckOverlay(this, () -> config.readyChecks() ? readyView() : null);
 		overlayManager.add(readyCheckOverlay);
 		groupAlertOverlay = new GroupAlertOverlay(this, () -> config.groupOverlay(), System::currentTimeMillis);
 		overlayManager.add(groupAlertOverlay);
@@ -1666,11 +1666,67 @@ public class AsgardiansPlugin extends Plugin
 		{
 			if (isNew && m.getMemberId() != myPartyId() && config.readyChecks())
 			{
-				chat((m.getName() != null ? m.getName() : "A party member") + " started a ready check. Right-click the box at the top of the screen to answer.");
+				chat((m.getName() != null ? m.getName() : "A party member") + READY_LINE + ". Right-click this message, use the Party page or type !asg r (!asg nr for not ready).");
 				playSound(net.runelite.api.SoundEffectID.TOWN_CRIER_BELL_DING, config.readyCheckVolume());
 			}
 			refreshPartyPanel();
 		});
+	}
+
+	/** What the "someone started a ready check" chat line says, so it can be found again for its right-click options. */
+	static final String READY_LINE = " started a ready check";
+
+	/**
+	 * Right-clicking the "… started a ready check" chat line while the check is on adds Ready / Not ready to the menu.
+	 * Game messages have no menu options of their own, so the line under the mouse is found by its position.
+	 */
+	@Subscribe
+	public void onMenuOpened(net.runelite.api.events.MenuOpened event)
+	{
+		if (!config.readyChecks())
+		{
+			return;
+		}
+		ReadyCheck.View v = readyView();
+		if (v == null || v.isOver() || !overReadyLine())
+		{
+			return;
+		}
+		client.createMenuEntry(-1).setOption("Not ready").setTarget("<col=ff9040>Ready check</col>")
+			.setType(MenuAction.RUNELITE).onClick(e -> answerReadyCheck(false));
+		client.createMenuEntry(-1).setOption("Ready").setTarget("<col=ff9040>Ready check</col>")
+			.setType(MenuAction.RUNELITE).onClick(e -> answerReadyCheck(true));
+	}
+
+	/** The mouse is on a chat line saying someone started a ready check. Client thread. */
+	private boolean overReadyLine()
+	{
+		Widget lines = client.getWidget(InterfaceID.Chatbox.SCROLLAREA);
+		net.runelite.api.Point mouse = client.getMouseCanvasPosition();
+		if (lines == null || lines.isHidden() || mouse == null)
+		{
+			return false;
+		}
+		java.awt.Rectangle area = lines.getBounds();
+		if (area == null || !area.contains(mouse.getX(), mouse.getY()))
+		{
+			return false;
+		}
+		Widget[] children = lines.getDynamicChildren();
+		for (Widget line : children != null ? children : new Widget[0])
+		{
+			if (line == null || line.isHidden() || line.getText() == null || !Text.removeTags(line.getText()).contains(READY_LINE))
+			{
+				continue;
+			}
+			java.awt.Rectangle b = line.getBounds();
+			// Anywhere across the line's row counts, not just over its text.
+			if (b != null && mouse.getY() >= b.y && mouse.getY() < b.y + Math.max(b.height, 1))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	@Subscribe
@@ -2056,10 +2112,6 @@ public class AsgardiansPlugin extends Plugin
 	 */
 	private void asgCommand(ChatMessage message, String text)
 	{
-		if (!config.chatCommands() || !sharing)
-		{
-			return;
-		}
 		String args = Text.removeTags(text).trim();
 		if (!args.toLowerCase(java.util.Locale.UK).startsWith(AsgCommands.PREFIX))
 		{
@@ -2070,6 +2122,16 @@ public class AsgardiansPlugin extends Plugin
 		String sender = message.getType() == ChatMessageType.PRIVATECHATOUT
 			? (local != null ? local.getName() : null) : Text.sanitize(message.getName());
 		if (sender == null || sender.isEmpty())
+		{
+			return;
+		}
+		Boolean ready = AsgCommands.readyAnswer(args);
+		if (ready != null)
+		{
+			readyCommand(message.getMessageNode(), sender, local, ready);
+			return;
+		}
+		if (!config.chatCommands() || !sharing)
 		{
 			return;
 		}
@@ -2111,6 +2173,38 @@ public class AsgardiansPlugin extends Plugin
 			}
 			clientThread.invokeLater(() -> replaceLine(node, AsgCommands.personal(word, sender, profile)));
 		});
+	}
+
+	/**
+	 * "!asg r" / "!asg nr" typed by this player: answers the party's ready check (or, for "r" with none running, starts
+	 * one), and shows what happened in place of the typed line on this player's screen. Other players' lines are left
+	 * alone. Client thread.
+	 */
+	private void readyCommand(net.runelite.api.MessageNode node, String sender, Player local, boolean ready)
+	{
+		if (local == null || !DropRecorder.sameRsn(local.getName(), sender) || !config.readyChecks())
+		{
+			return;
+		}
+		if (!partyService.isInParty())
+		{
+			replaceLine(node, "You're not in a party. Start or join one on the Asgardians panel's Party page.");
+			return;
+		}
+		ReadyCheck.View v = readyView();
+		if (v == null || v.isOver())
+		{
+			if (!ready)
+			{
+				replaceLine(node, "There's no ready check on.");
+				return;
+			}
+			startReadyCheck();
+			replaceLine(node, "You started a ready check.");
+			return;
+		}
+		answerReadyCheck(ready);
+		replaceLine(node, ready ? "You're ready." : "You're not ready.");
 	}
 
 	/** Shows the answer in place of the typed command. Client thread. */
@@ -2939,7 +3033,8 @@ public class AsgardiansPlugin extends Plugin
 		santaPictureWaits.put(path, waiting);
 		okhttp3.HttpUrl base = okhttp3.HttpUrl.parse(apiAddress());
 		okhttp3.HttpUrl url = base != null ? base.resolve(path) : null;
-		if (url == null)
+		// Only pictures on the clan website itself, so a link elsewhere can't make the client call another server.
+		if (url == null || !url.host().equalsIgnoreCase(base.host()) || !url.scheme().equals(base.scheme()))
 		{
 			santaPictureWaits.remove(path);
 			return;
@@ -4052,6 +4147,14 @@ public class AsgardiansPlugin extends Plugin
 	 */
 	private void captureWithoutPrivateChat(Record record)
 	{
+		if (!shotWaiting.isEmpty())
+		{
+			// A picture is already being taken this moment (a drop, its collection log slot and a pet together):
+			// share it rather than copying the screen several times over.
+			shotWaiting.add(record);
+			return;
+		}
+		shotWaiting.add(record);
 		List<Widget> hidden = new ArrayList<>();
 		AtomicBoolean restored = new AtomicBoolean();
 		Runnable restore = () ->
@@ -4077,22 +4180,58 @@ public class AsgardiansPlugin extends Plugin
 		{
 			log.warn("Asgardians couldn't check for private messages, skipping the screenshot", e);
 			restore.run();
-			queue.noScreenshot(record.getId());
+			takeShotWaiting().forEach(r -> queue.noScreenshot(r.getId()));
 			return;
 		}
 		if (hidden.isEmpty() && chatPrivacy.messagedRecently(System.currentTimeMillis()))
 		{
 			// A private message was just sent or received but nothing was found to hide, so it may still be on screen.
-			queue.noScreenshot(record.getId());
+			takeShotWaiting().forEach(r -> queue.noScreenshot(r.getId()));
 			return;
 		}
 		drawManager.requestNextFrameListener(image ->
 		{
 			restore.run();
-			takeScreenshot(record, image);
+			List<Record> records = takeShotWaiting();
+			// This runs inside the renderer's own drawing code (117 HD or GPU), where an error would be taken as the
+			// renderer's and switch it off. So only hand the frame over here; the work happens on our own thread.
+			if (!records.isEmpty())
+			{
+				executor.execute(() -> takeScreenshot(records, image));
+			}
 		});
-		// If no frame is drawn (client minimised), don't leave chat hidden.
-		executor.schedule(restore, 3, TimeUnit.SECONDS);
+		// If no frame is drawn (client minimised), don't leave chat hidden, and let the next drop try again.
+		executor.schedule(() ->
+		{
+			restore.run();
+			clientThread.invokeLater(() -> takeShotWaiting().forEach(r -> queue.noScreenshot(r.getId())));
+		}, 3, TimeUnit.SECONDS);
+	}
+
+	/** Records sharing the screenshot being taken. Client thread. */
+	private final List<Record> shotWaiting = new ArrayList<>();
+
+	/** Screenshots are shrunk to fit this (unless "Screenshot size" is set), so a 4K screen doesn't hold 33 MB per picture. */
+	private static final int SHOT_MAX_WIDTH = 1920;
+	private static final int SHOT_MAX_HEIGHT = 1080;
+
+	private List<Record> takeShotWaiting()
+	{
+		List<Record> out = new ArrayList<>(shotWaiting);
+		shotWaiting.clear();
+		return out;
+	}
+
+	/**
+	 * The picture's size. Scale 0 (automatic): the screen's, shrunk (never stretched) to fit {@link #SHOT_MAX_WIDTH} x
+	 * {@link #SHOT_MAX_HEIGHT}. Otherwise that percentage of the screen, like Dink's Screenshot Scale.
+	 */
+	static java.awt.Dimension shotSize(int width, int height, int scalePercent)
+	{
+		double scale = scalePercent > 0
+			? Math.min(100, scalePercent) / 100.0
+			: Math.min(1.0, Math.min((double) SHOT_MAX_WIDTH / width, (double) SHOT_MAX_HEIGHT / height));
+		return new java.awt.Dimension(Math.max(1, (int) Math.round(width * scale)), Math.max(1, (int) Math.round(height * scale)));
 	}
 
 	private static void hide(Widget widget, List<Widget> hidden)
@@ -4128,28 +4267,39 @@ public class AsgardiansPlugin extends Plugin
 		}
 	}
 
-	private void takeScreenshot(Record record, Image image)
+	/**
+	 * Turns the frame into the records' picture. Runs on the plugin's own thread, like RuneLite's Screenshot plugin and
+	 * Dink: the renderer hands over a frame of its own, so nothing is copied while it's drawing, and if memory runs out
+	 * it's this thread that sees it, not 117 HD or the GPU plugin. Executor thread.
+	 */
+	private void takeScreenshot(List<Record> records, Image image)
 	{
-		BufferedImage shot = new BufferedImage(image.getWidth(null), image.getHeight(null), BufferedImage.TYPE_INT_RGB);
-		Graphics2D g = shot.createGraphics();
-		g.drawImage(image, 0, 0, null);
-		g.dispose();
-		executor.execute(() ->
+		try
 		{
+			java.awt.Dimension full = new java.awt.Dimension(image.getWidth(null), image.getHeight(null));
+			java.awt.Dimension size = shotSize(full.width, full.height, config.screenshotScale());
+			BufferedImage shot = new BufferedImage(size.width, size.height, BufferedImage.TYPE_INT_RGB);
+			Graphics2D g = shot.createGraphics();
+			g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			g.drawImage(image, 0, 0, size.width, size.height, null);
+			g.dispose();
 			try (ByteArrayOutputStream out = new ByteArrayOutputStream())
 			{
 				ImageIO.write(shot, "png", out);
-				queue.attachScreenshot(record.getId(), out.toByteArray());
-			}
-			catch (IOException e)
-			{
-				log.warn("Asgardians screenshot failed", e);
+				byte[] png = out.toByteArray();
+				records.forEach(r -> queue.attachScreenshot(r.getId(), png));
 			}
 			if (config.saveScreenshots())
 			{
-				imageCapture.saveScreenshot(shot, fileName(record), "Asgardians", false, false);
+				imageCapture.saveScreenshot(shot, fileName(records.get(0)), "Asgardians", false, false);
 			}
-		});
+		}
+		catch (IOException | RuntimeException | OutOfMemoryError e)
+		{
+			// Never take the client down for a picture: these records go without one.
+			log.warn("Asgardians screenshot skipped: {}", e.toString());
+			records.forEach(r -> queue.noScreenshot(r.getId()));
+		}
 	}
 
 	private static String fileName(Record record)

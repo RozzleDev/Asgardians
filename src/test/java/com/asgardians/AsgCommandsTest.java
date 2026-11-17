@@ -46,8 +46,20 @@ public class AsgCommandsTest
 		AsgCommands.Clan c = clan(null, null, Map.of(), null);
 		assertNull(AsgCommands.answer("dance", "Rozzle", c));
 		assertNull(AsgCommands.answer("groups", "Rozzle", c));
-		assertEquals("Asgardians: !asg groups, events, bingo, sotw, botw, news, drops [week/month/year/all], cabbage, pb [boss], credit, rank, ehb, ehp, profile, eggs",
+		assertEquals("Asgardians: !asg groups, events, bingo, sotw, botw, news, drops [week/month/year/all], cabbage, pb [boss], credit, rank, ehb, ehp, profile, eggs, r (ready up), nr (not ready)",
 			plain(AsgCommands.answer("", "Rozzle", c)));
+	}
+
+	@Test
+	public void readyCommands()
+	{
+		assertEquals(Boolean.TRUE, AsgCommands.readyAnswer("r"));
+		assertEquals(Boolean.TRUE, AsgCommands.readyAnswer(" Ready "));
+		assertEquals(Boolean.FALSE, AsgCommands.readyAnswer("nr"));
+		assertEquals(Boolean.FALSE, AsgCommands.readyAnswer("not  ready"));
+		assertNull(AsgCommands.readyAnswer("rank"));
+		assertNull(AsgCommands.readyAnswer("r tob"));
+		assertNull(AsgCommands.readyAnswer(""));
 	}
 
 	@Test

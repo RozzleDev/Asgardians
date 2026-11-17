@@ -166,6 +166,22 @@ public interface AsgardiansConfig extends Config
 		return true;
 	}
 
+	@Range(min = 0, max = 100)
+	@Units(Units.PERCENT)
+	@ConfigItem(
+		keyName = "screenshotScale",
+		name = "Screenshot size",
+		description = "0% is automatic: screenshots are shrunk to fit 1920x1080. Anything else is that percentage of your "
+			+ "screen size, so 100% keeps them full size. Bigger uses more memory, so keep it low if you run lots of "
+			+ "plugins or a 4K screen.",
+		section = sharingSection,
+		position = 3
+	)
+	default int screenshotScale()
+	{
+		return 0;
+	}
+
 	@ConfigItem(
 		keyName = "showCodeword",
 		name = "Show event codeword",
@@ -351,7 +367,7 @@ public interface AsgardiansConfig extends Config
 	@ConfigItem(
 		keyName = "readyChecks",
 		name = "Party ready checks",
-		description = "Show ready checks from your RuneLite party on screen (right-click the box to answer), ring a bell when one starts and say the result in chat",
+		description = "Show ready checks from your RuneLite party on screen (answer on the Party page, by right-clicking the chat message or with !asg r / !asg nr), ring a bell when one starts and say the result in chat",
 		section = groupsSection,
 		position = 3
 	)

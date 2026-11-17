@@ -164,7 +164,7 @@ final class PartyTabs
 		Card card = new Card("Ready check");
 		if (v == null)
 		{
-			card.add(small("Everyone in the party hears a bell and gets a box on screen to answer (right-click it).", QUIET));
+			card.add(small("Everyone in the party hears a bell and gets a box on screen. Ready up here, right-click the chat message or type !asg r (!asg nr for not ready).", QUIET));
 			card.gap();
 			card.addWide(PanelParts.button("Start a ready check", true, actions::readyCheck));
 			return card;

@@ -56,6 +56,27 @@ final class AsgCommands
 		return parts.length > 1 ? parts[1].trim() : "";
 	}
 
+	/**
+	 * "!asg r" (or "ready") answers ready to the party's ready check, or starts one; "!asg nr" (or "notready") answers
+	 * not ready. Null for any other command.
+	 */
+	static Boolean readyAnswer(String args)
+	{
+		String a = args.trim().toLowerCase(Locale.UK).replaceAll("\\s+", " ");
+		switch (a)
+		{
+			case "r":
+			case "ready":
+				return Boolean.TRUE;
+			case "nr":
+			case "notready":
+			case "not ready":
+				return Boolean.FALSE;
+			default:
+				return null;
+		}
+	}
+
 	static boolean personal(String word)
 	{
 		return PERSONAL.contains(word);
@@ -105,7 +126,7 @@ final class AsgCommands
 	static String help()
 	{
 		return new ChatMessageBuilder().append(ChatColorType.HIGHLIGHT).append("Asgardians: ").append(ChatColorType.NORMAL)
-			.append("!asg groups, events, bingo, sotw, botw, news, drops [week/month/year/all], cabbage, pb [boss], credit, rank, ehb, ehp, profile, eggs")
+			.append("!asg groups, events, bingo, sotw, botw, news, drops [week/month/year/all], cabbage, pb [boss], credit, rank, ehb, ehp, profile, eggs, r (ready up), nr (not ready)")
 			.build();
 	}
 
